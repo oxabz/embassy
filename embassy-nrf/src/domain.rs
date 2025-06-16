@@ -19,7 +19,7 @@ pub trait DomainSpecific {
 /* MCUDomain the central domain */
 
 #[cfg(not(feature = "_multi_domain"))]
-pub struct MCUDomain;
+pub enum MCUDomain{}
 
 #[cfg(all(feature = "_dppi", not(feature = "_multi_domain")))]
 impl Domain for MCUDomain {
@@ -37,7 +37,7 @@ pub use crate::chip::MCUDomain;
 #[macro_export]
 macro_rules! domain_definition {
     ($type:ident, $ppi: path) => {
-        pub(crate) struct $type;
+        pub(crate) enum $type{}
         impl Domain for $type {
             #[cfg(feature = "_dppi")]
             const PPI: $crate::pac::dppic::Dppic = $ppi;

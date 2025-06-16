@@ -37,8 +37,8 @@ pub use crate::chip::MCUDomain;
 #[macro_export]
 macro_rules! domain_definition {
     ($type:ident, $ppi: path) => {
-        pub(crate) enum $type{}
-        impl Domain for $type {
+        pub enum $type{}
+        impl $crate::domain::Domain for $type {
             #[cfg(feature = "_dppi")]
             const PPI: $crate::pac::dppic::Dppic = $ppi;
         }
@@ -76,10 +76,10 @@ macro_rules! peripherals {
 macro_rules! peripherals {
     ($($domain:path => {$($(#[$cfg:meta])? $name:ident),*$(,)?})*) => {
         embassy_hal_internal::peripherals!(
-            $(
+            $($(
                 $(#[$cfg])?
                 $name,
-            )*
+            )*)*
         );
 
         $($(

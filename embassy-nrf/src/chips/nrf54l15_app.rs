@@ -211,7 +211,7 @@ domain_definition!(PeriDomain, pac::DPPIC20);
 domain_definition!(LPDomain, pac::DPPIC30);
 
 crate::peripherals! {
-    super::MCUDomain => {
+    MCUDomain => {
         // GPIO port 2
         P2_00,
         P2_01,
@@ -226,7 +226,7 @@ crate::peripherals! {
         P2_10,
     }
 
-    super::PeriDomain => {
+    PeriDomain => {
         // GPIO port 1
         P1_00,
         P1_01,
@@ -247,7 +247,7 @@ crate::peripherals! {
         P1_16,
     }
 
-    super::LPDomain => {
+    LPDomain => {
         // GPIO port 0
         P0_00,
         P0_01,

@@ -114,7 +114,7 @@ _nrf5340-net = ["_nrf5340", "nrf-pac/nrf5340-net"]
 _nrf5340 = ["_gpio-p1", "_dppi"]
 _nrf54l15-app = ["_nrf54l15", "nrf-pac/nrf54l15-app"]
 _nrf54l15 = ["_nrf54l", "_gpio-p1", "_gpio-p2"]
-_nrf54l = ["_dppi"]
+_nrf54l = ["_dppi", "_multi_domain"]
 
 _nrf9160 = ["nrf-pac/nrf9160", "_dppi"]
 _nrf9120 = ["nrf-pac/nrf9120", "_dppi"]
@@ -130,6 +130,7 @@ _ns = []
 
 _ppi = []
 _dppi = []
+_multi_domain = []
 _gpio-p1 = []
 _gpio-p2 = []
 

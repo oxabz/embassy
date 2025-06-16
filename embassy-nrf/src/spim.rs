@@ -22,6 +22,7 @@ use crate::pac::gpio::vals as gpiovals;
 use crate::pac::spim::vals;
 use crate::util::slice_in_ram_or;
 use crate::{interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// SPIM error
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,9 +109,9 @@ impl<'d, T: Instance> Spim<'d, T> {
     pub fn new(
         spim: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        sck: Peri<'d, impl GpioPin>,
-        miso: Peri<'d, impl GpioPin>,
-        mosi: Peri<'d, impl GpioPin>,
+        sck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        miso: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        mosi: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(spim, Some(sck.into()), Some(miso.into()), Some(mosi.into()), config)
@@ -120,8 +121,8 @@ impl<'d, T: Instance> Spim<'d, T> {
     pub fn new_txonly(
         spim: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        sck: Peri<'d, impl GpioPin>,
-        mosi: Peri<'d, impl GpioPin>,
+        sck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        mosi: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(spim, Some(sck.into()), None, Some(mosi.into()), config)
@@ -131,8 +132,8 @@ impl<'d, T: Instance> Spim<'d, T> {
     pub fn new_rxonly(
         spim: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        sck: Peri<'d, impl GpioPin>,
-        miso: Peri<'d, impl GpioPin>,
+        sck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        miso: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(spim, Some(sck.into()), Some(miso.into()), None, config)
@@ -142,7 +143,7 @@ impl<'d, T: Instance> Spim<'d, T> {
     pub fn new_txonly_nosck(
         spim: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        mosi: Peri<'d, impl GpioPin>,
+        mosi: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(spim, None, None, Some(mosi.into()), config)
@@ -150,9 +151,9 @@ impl<'d, T: Instance> Spim<'d, T> {
 
     fn new_inner(
         spim: Peri<'d, T>,
-        sck: Option<Peri<'d, AnyPin>>,
-        miso: Option<Peri<'d, AnyPin>>,
-        mosi: Option<Peri<'d, AnyPin>>,
+        sck: Option<Peri<'d, AnyPin<T::Domain>>>,
+        miso: Option<Peri<'d, AnyPin<T::Domain>>>,
+        mosi: Option<Peri<'d, AnyPin<T::Domain>>>,
         config: Config,
     ) -> Self {
         let r = T::regs();
@@ -461,9 +462,9 @@ impl<'d, T: Instance> Drop for Spim<'d, T> {
         let r = T::regs();
         r.enable().write(|w| w.set_enable(vals::Enable::DISABLED));
 
-        gpio::deconfigure_pin(r.psel().sck().read());
-        gpio::deconfigure_pin(r.psel().miso().read());
-        gpio::deconfigure_pin(r.psel().mosi().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().sck().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().miso().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().mosi().read());
 
         // Disable all events interrupts
         T::Interrupt::disable();
@@ -499,7 +500,7 @@ pub(crate) trait SealedInstance {
 
 /// SPIM peripheral instance
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

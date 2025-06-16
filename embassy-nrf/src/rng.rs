@@ -16,6 +16,7 @@ use embassy_sync::waitqueue::WakerRegistration;
 use crate::interrupt::typelevel::Interrupt;
 use crate::mode::{Async, Blocking, Mode};
 use crate::{interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// Interrupt handler.
 pub struct InterruptHandler<T: Instance> {
@@ -295,7 +296,7 @@ pub(crate) trait SealedInstance {
 
 /// RNG peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

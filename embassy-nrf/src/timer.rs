@@ -7,7 +7,7 @@
 #![macro_use]
 
 use embassy_hal_internal::{Peri, PeripheralType};
-
+use crate::domain::DomainSpecific;
 use crate::pac;
 use crate::pac::timer::vals;
 use crate::ppi::{Event, Task};
@@ -20,7 +20,7 @@ pub(crate) trait SealedInstance {
 
 /// Basic Timer instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: crate::interrupt::typelevel::Interrupt;
 }
@@ -163,21 +163,21 @@ impl<'d, T: Instance> Timer<'d, T> {
     /// Returns the START task, for use with PPI.
     ///
     /// When triggered, this task starts the timer.
-    pub fn task_start(&self) -> Task<'d> {
+    pub fn task_start(&self) -> Task<'d, T::Domain> {
         Task::from_reg(T::regs().tasks_start())
     }
 
     /// Returns the STOP task, for use with PPI.
     ///
     /// When triggered, this task stops the timer.
-    pub fn task_stop(&self) -> Task<'d> {
+    pub fn task_stop(&self) -> Task<'d, T::Domain> {
         Task::from_reg(T::regs().tasks_stop())
     }
 
     /// Returns the CLEAR task, for use with PPI.
     ///
     /// When triggered, this task resets the timer's counter to 0.
-    pub fn task_clear(&self) -> Task<'d> {
+    pub fn task_clear(&self) -> Task<'d, T::Domain> {
         Task::from_reg(T::regs().tasks_clear())
     }
 
@@ -185,7 +185,7 @@ impl<'d, T: Instance> Timer<'d, T> {
     ///
     /// When triggered, this task increments the timer's counter by 1.
     /// Only works in counter mode.
-    pub fn task_count(&self) -> Task<'d> {
+    pub fn task_count(&self) -> Task<'d, T::Domain> {
         Task::from_reg(T::regs().tasks_count())
     }
 
@@ -252,14 +252,14 @@ impl<'d, T: Instance> Cc<'d, T> {
     /// Returns this CC register's CAPTURE task, for use with PPI.
     ///
     /// When triggered, this task will capture the current value of the timer's counter in this register.
-    pub fn task_capture(&self) -> Task<'d> {
+    pub fn task_capture(&self) -> Task<'d, T::Domain> {
         Task::from_reg(T::regs().tasks_capture(self.n))
     }
 
     /// Returns this CC register's COMPARE event, for use with PPI.
     ///
     /// This event will fire when the timer's counter reaches the value in this CC register.
-    pub fn event_compare(&self) -> Event<'d> {
+    pub fn event_compare(&self) -> Event<'d, T::Domain> {
         Event::from_reg(T::regs().events_compare(self.n))
     }
 

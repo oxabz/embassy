@@ -18,6 +18,7 @@ use crate::interrupt::typelevel::Interrupt;
 use crate::pac::i2s::vals;
 use crate::util::slice_in_ram_or;
 use crate::{interrupt, pac, EASY_DMA_SIZE};
+use crate::domain::DomainSpecific;
 
 /// Type alias for `MultiBuffering` with 2 buffers.
 pub type DoubleBuffering<S, const NS: usize> = MultiBuffering<S, 2, NS>;
@@ -407,11 +408,11 @@ impl<T: Instance> interrupt::typelevel::Handler<T::Interrupt> for InterruptHandl
 /// I2S driver.
 pub struct I2S<'d, T: Instance> {
     i2s: Peri<'d, T>,
-    mck: Option<Peri<'d, AnyPin>>,
-    sck: Peri<'d, AnyPin>,
-    lrck: Peri<'d, AnyPin>,
-    sdin: Option<Peri<'d, AnyPin>>,
-    sdout: Option<Peri<'d, AnyPin>>,
+    mck: Option<Peri<'d, AnyPin<T::Domain>>>,
+    sck: Peri<'d, AnyPin<T::Domain>>,
+    lrck: Peri<'d, AnyPin<T::Domain>>,
+    sdin: Option<Peri<'d, AnyPin<T::Domain>>>,
+    sdout: Option<Peri<'d, AnyPin<T::Domain>>>,
     master_clock: Option<MasterClock>,
     config: Config,
 }
@@ -421,9 +422,9 @@ impl<'d, T: Instance> I2S<'d, T> {
     pub fn new_master(
         i2s: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        mck: Peri<'d, impl GpioPin>,
-        sck: Peri<'d, impl GpioPin>,
-        lrck: Peri<'d, impl GpioPin>,
+        mck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        sck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        lrck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         master_clock: MasterClock,
         config: Config,
     ) -> Self {
@@ -443,8 +444,8 @@ impl<'d, T: Instance> I2S<'d, T> {
     pub fn new_slave(
         i2s: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        sck: Peri<'d, impl GpioPin>,
-        lrck: Peri<'d, impl GpioPin>,
+        sck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        lrck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self {
@@ -462,7 +463,7 @@ impl<'d, T: Instance> I2S<'d, T> {
     /// I2S output only
     pub fn output<S: Sample, const NB: usize, const NS: usize>(
         mut self,
-        sdout: Peri<'d, impl GpioPin>,
+        sdout: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         buffers: MultiBuffering<S, NB, NS>,
     ) -> OutputStream<'d, T, S, NB, NS> {
         self.sdout = Some(sdout.into());
@@ -475,7 +476,7 @@ impl<'d, T: Instance> I2S<'d, T> {
     /// I2S input only
     pub fn input<S: Sample, const NB: usize, const NS: usize>(
         mut self,
-        sdin: Peri<'d, impl GpioPin>,
+        sdin: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         buffers: MultiBuffering<S, NB, NS>,
     ) -> InputStream<'d, T, S, NB, NS> {
         self.sdin = Some(sdin.into());
@@ -488,8 +489,8 @@ impl<'d, T: Instance> I2S<'d, T> {
     /// I2S full duplex (input and output)
     pub fn full_duplex<S: Sample, const NB: usize, const NS: usize>(
         mut self,
-        sdin: Peri<'d, impl GpioPin>,
-        sdout: Peri<'d, impl GpioPin>,
+        sdin: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        sdout: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         buffers_out: MultiBuffering<S, NB, NS>,
         buffers_in: MultiBuffering<S, NB, NS>,
     ) -> FullDuplexStream<'d, T, S, NB, NS> {
@@ -1146,7 +1147,7 @@ pub(crate) trait SealedInstance {
 
 /// I2S peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

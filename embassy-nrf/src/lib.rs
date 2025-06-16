@@ -114,7 +114,6 @@ pub mod pdm;
 #[cfg(not(feature = "_nrf54l"))] // TODO
 #[cfg(any(feature = "nrf52840", feature = "nrf9160-s", feature = "nrf9160-ns"))]
 pub mod power;
-#[cfg(not(feature = "_nrf54l"))] // TODO
 pub mod ppi;
 #[cfg(not(feature = "_nrf54l"))] // TODO
 #[cfg(not(any(
@@ -188,6 +187,7 @@ pub mod wdt;
 #[cfg_attr(feature = "_nrf9160", path = "chips/nrf9160.rs")]
 #[cfg_attr(feature = "_nrf9120", path = "chips/nrf9120.rs")]
 mod chip;
+mod domain;
 
 /// Macro to bind interrupts to handlers.
 ///

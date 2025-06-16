@@ -5,7 +5,7 @@ pub const EASY_DMA_SIZE: usize = (1 << 14) - 1;
 
 pub const FLASH_SIZE: usize = 128 * 1024;
 
-embassy_hal_internal::peripherals! {
+crate::peripherals! {
     // RTC
     RTC0,
     RTC1,

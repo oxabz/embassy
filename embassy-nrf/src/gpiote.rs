@@ -15,6 +15,7 @@ use crate::pac::gpio::vals::Sense;
 use crate::pac::gpiote::vals::{Mode, Outinit, Polarity};
 use crate::ppi::{Event, Task};
 use crate::{interrupt, pac, peripherals};
+use crate::domain::{Domain, DomainSpecific};
 
 #[cfg(feature = "_nrf51")]
 /// Amount of GPIOTE channels in the chip.
@@ -188,12 +189,12 @@ impl Iterator for BitIter {
 }
 
 /// GPIOTE channel driver in input mode
-pub struct InputChannel<'d> {
-    ch: Peri<'d, AnyChannel>,
-    pin: Input<'d>,
+pub struct InputChannel<'d, D: Domain + 'static> {
+    ch: Peri<'d, AnyChannel<D>>,
+    pin: Input<'d, D>,
 }
 
-impl<'d> Drop for InputChannel<'d> {
+impl<'d, D: Domain + 'static> Drop for InputChannel<'d, D> {
     fn drop(&mut self) {
         let g = regs();
         let num = self.ch.number();
@@ -202,9 +203,9 @@ impl<'d> Drop for InputChannel<'d> {
     }
 }
 
-impl<'d> InputChannel<'d> {
+impl<'d, D: Domain> InputChannel<'d, D> {
     /// Create a new GPIOTE input channel driver.
-    pub fn new(ch: Peri<'d, impl Channel>, pin: Input<'d>, polarity: InputChannelPolarity) -> Self {
+    pub fn new(ch: Peri<'d, impl Channel<Domain = D>>, pin: Input<'d, D>, polarity: InputChannelPolarity) -> Self {
         let g = regs();
         let num = ch.number();
 
@@ -251,19 +252,19 @@ impl<'d> InputChannel<'d> {
     }
 
     /// Returns the IN event, for use with PPI.
-    pub fn event_in(&self) -> Event<'d> {
+    pub fn event_in(&self) -> Event<'d, D> {
         let g = regs();
         Event::from_reg(g.events_in(self.ch.number()))
     }
 }
 
 /// GPIOTE channel driver in output mode
-pub struct OutputChannel<'d> {
-    ch: Peri<'d, AnyChannel>,
-    _pin: Output<'d>,
+pub struct OutputChannel<'d, D:Domain + 'static> {
+    ch: Peri<'d, AnyChannel<D>>,
+    _pin: Output<'d, D>,
 }
 
-impl<'d> Drop for OutputChannel<'d> {
+impl<'d, D: Domain> Drop for OutputChannel<'d, D> {
     fn drop(&mut self) {
         let g = regs();
         let num = self.ch.number();
@@ -272,9 +273,9 @@ impl<'d> Drop for OutputChannel<'d> {
     }
 }
 
-impl<'d> OutputChannel<'d> {
+impl<'d, D: Domain> OutputChannel<'d, D> {
     /// Create a new GPIOTE output channel driver.
-    pub fn new(ch: Peri<'d, impl Channel>, pin: Output<'d>, polarity: OutputChannelPolarity) -> Self {
+    pub fn new(ch: Peri<'d, impl Channel<Domain = D>>, pin: Output<'d, D>, polarity: OutputChannelPolarity) -> Self {
         let g = regs();
         let num = ch.number();
 
@@ -324,21 +325,21 @@ impl<'d> OutputChannel<'d> {
     }
 
     /// Returns the OUT task, for use with PPI.
-    pub fn task_out(&self) -> Task<'d> {
+    pub fn task_out(&self) -> Task<'d, D> {
         let g = regs();
         Task::from_reg(g.tasks_out(self.ch.number()))
     }
 
     /// Returns the CLR task, for use with PPI.
     #[cfg(not(feature = "_nrf51"))]
-    pub fn task_clr(&self) -> Task<'d> {
+    pub fn task_clr(&self) -> Task<'d, D> {
         let g = regs();
         Task::from_reg(g.tasks_clr(self.ch.number()))
     }
 
     /// Returns the SET task, for use with PPI.
     #[cfg(not(feature = "_nrf51"))]
-    pub fn task_set(&self) -> Task<'d> {
+    pub fn task_set(&self) -> Task<'d, D> {
         let g = regs();
         Task::from_reg(g.tasks_set(self.ch.number()))
     }
@@ -347,25 +348,25 @@ impl<'d> OutputChannel<'d> {
 // =======================
 
 #[must_use = "futures do nothing unless you `.await` or poll them"]
-pub(crate) struct PortInputFuture<'a> {
-    pin: Peri<'a, AnyPin>,
+pub(crate) struct PortInputFuture<'a, D: Domain> {
+    pin: Peri<'a, AnyPin<D>>,
 }
 
-impl<'a> PortInputFuture<'a> {
-    fn new(pin: Peri<'a, impl GpioPin>) -> Self {
+impl<'a, D: Domain> PortInputFuture<'a, D> {
+    fn new(pin: Peri<'a, impl GpioPin<Domain = D>>) -> Self {
         Self { pin: pin.into() }
     }
 }
 
-impl<'a> Unpin for PortInputFuture<'a> {}
+impl<'a, D: Domain> Unpin for PortInputFuture<'a, D> {}
 
-impl<'a> Drop for PortInputFuture<'a> {
+impl<'a, D: Domain> Drop for PortInputFuture<'a, D> {
     fn drop(&mut self) {
         self.pin.conf().modify(|w| w.set_sense(Sense::DISABLED));
     }
 }
 
-impl<'a> Future for PortInputFuture<'a> {
+impl<'a, D: Domain> Future for PortInputFuture<'a, D> {
     type Output = ();
 
     fn poll(self: core::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -379,7 +380,7 @@ impl<'a> Future for PortInputFuture<'a> {
     }
 }
 
-impl<'d> Input<'d> {
+impl<'d, D: Domain> Input<'d, D> {
     /// Wait until the pin is high. If it is already high, return immediately.
     pub async fn wait_for_high(&mut self) {
         self.pin.wait_for_high().await
@@ -406,17 +407,17 @@ impl<'d> Input<'d> {
     }
 }
 
-impl<'d> Flex<'d> {
+impl<'d, D: Domain + 'static> Flex<'d, D> {
     /// Wait until the pin is high. If it is already high, return immediately.
     pub async fn wait_for_high(&mut self) {
         self.pin.conf().modify(|w| w.set_sense(Sense::HIGH));
-        PortInputFuture::new(self.pin.reborrow()).await
+        PortInputFuture::<D>::new(self.pin.reborrow()).await
     }
 
     /// Wait until the pin is low. If it is already low, return immediately.
     pub async fn wait_for_low(&mut self) {
         self.pin.conf().modify(|w| w.set_sense(Sense::LOW));
-        PortInputFuture::new(self.pin.reborrow()).await
+        PortInputFuture::<D>::new(self.pin.reborrow()).await
     }
 
     /// Wait for the pin to undergo a transition from low to high.
@@ -438,7 +439,7 @@ impl<'d> Flex<'d> {
         } else {
             self.pin.conf().modify(|w| w.set_sense(Sense::HIGH));
         }
-        PortInputFuture::new(self.pin.reborrow()).await
+        PortInputFuture::<D>::new(self.pin.reborrow()).await
     }
 }
 
@@ -450,7 +451,7 @@ trait SealedChannel {}
 ///
 /// Implemented by all GPIOTE channels.
 #[allow(private_bounds)]
-pub trait Channel: PeripheralType + SealedChannel + Into<AnyChannel> + Sized + 'static {
+pub trait Channel: PeripheralType + DomainSpecific + SealedChannel + Into<AnyChannel<Self::Domain>> + Sized + 'static {
     /// Get the channel number.
     fn number(&self) -> usize;
 }
@@ -461,12 +462,17 @@ pub trait Channel: PeripheralType + SealedChannel + Into<AnyChannel> + Sized + '
 ///
 /// This allows using several channels in situations that might require
 /// them to be the same type, like putting them in an array.
-pub struct AnyChannel {
+pub struct AnyChannel<D: Domain> {
+    domain: core::marker::PhantomData<D>,
     number: u8,
 }
-impl_peripheral!(AnyChannel);
-impl SealedChannel for AnyChannel {}
-impl Channel for AnyChannel {
+impl_peripheral!(AnyChannel<D: Domain>);
+
+impl<D: Domain> DomainSpecific for AnyChannel<D> {
+    type Domain = D;
+}
+impl<D: Domain> SealedChannel for AnyChannel<D> {}
+impl<D: Domain + 'static> Channel for AnyChannel<D> {
     fn number(&self) -> usize {
         self.number as usize
     }
@@ -481,9 +487,10 @@ macro_rules! impl_channel {
             }
         }
 
-        impl From<peripherals::$type> for AnyChannel {
+        impl From<peripherals::$type> for AnyChannel<<peripherals::$type as $crate::domain::DomainSpecific>::Domain> {
             fn from(val: peripherals::$type) -> Self {
                 Self {
+                    domain: Default::default(),
                     number: val.number() as u8,
                 }
             }
@@ -509,7 +516,7 @@ impl_channel!(GPIOTE_CH7, 7);
 mod eh02 {
     use super::*;
 
-    impl<'d> embedded_hal_02::digital::v2::InputPin for InputChannel<'d> {
+    impl<'d, D: Domain> embedded_hal_02::digital::v2::InputPin for InputChannel<'d, D> {
         type Error = Infallible;
 
         fn is_high(&self) -> Result<bool, Self::Error> {
@@ -522,11 +529,11 @@ mod eh02 {
     }
 }
 
-impl<'d> embedded_hal_1::digital::ErrorType for InputChannel<'d> {
+impl<'d, D: Domain> embedded_hal_1::digital::ErrorType for InputChannel<'d, D> {
     type Error = Infallible;
 }
 
-impl<'d> embedded_hal_1::digital::InputPin for InputChannel<'d> {
+impl<'d, D: Domain> embedded_hal_1::digital::InputPin for InputChannel<'d, D> {
     fn is_high(&mut self) -> Result<bool, Self::Error> {
         Ok(self.pin.is_high())
     }
@@ -536,7 +543,7 @@ impl<'d> embedded_hal_1::digital::InputPin for InputChannel<'d> {
     }
 }
 
-impl<'d> embedded_hal_async::digital::Wait for Input<'d> {
+impl<'d, D: Domain> embedded_hal_async::digital::Wait for Input<'d, D> {
     async fn wait_for_high(&mut self) -> Result<(), Self::Error> {
         Ok(self.wait_for_high().await)
     }
@@ -558,7 +565,7 @@ impl<'d> embedded_hal_async::digital::Wait for Input<'d> {
     }
 }
 
-impl<'d> embedded_hal_async::digital::Wait for Flex<'d> {
+impl<'d, D: Domain> embedded_hal_async::digital::Wait for Flex<'d, D> {
     async fn wait_for_high(&mut self) -> Result<(), Self::Error> {
         Ok(self.wait_for_high().await)
     }

@@ -20,6 +20,7 @@ use crate::pac::gpio::vals as gpiovals;
 use crate::pac::twis::vals;
 use crate::util::slice_in_ram_or;
 use crate::{gpio, interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// TWIS config.
 #[non_exhaustive]
@@ -763,8 +764,8 @@ impl<'a, T: Instance> Drop for Twis<'a, T> {
         let r = T::regs();
         r.enable().write(|w| w.set_enable(vals::Enable::DISABLED));
 
-        gpio::deconfigure_pin(r.psel().sda().read());
-        gpio::deconfigure_pin(r.psel().scl().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().sda().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().scl().read());
 
         trace!("twis drop: done");
     }
@@ -789,7 +790,7 @@ pub(crate) trait SealedInstance {
 
 /// TWIS peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

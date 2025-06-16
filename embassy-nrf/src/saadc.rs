@@ -279,8 +279,8 @@ impl<'d, const N: usize> Saadc<'d, N> {
     pub async fn run_task_sampler<F, T: TimerInstance, const N0: usize>(
         &mut self,
         timer: Peri<'_, T>,
-        ppi_ch1: Peri<'_, impl ConfigurableChannel>,
-        ppi_ch2: Peri<'_, impl ConfigurableChannel>,
+        ppi_ch1: Peri<'_, impl ConfigurableChannel<Domain = T::Domain>>,
+        ppi_ch2: Peri<'_, impl ConfigurableChannel<Domain = T::Domain>>,
         frequency: Frequency,
         sample_counter: u32,
         bufs: &mut [[[i16; N]; N0]; 2],

@@ -9,7 +9,7 @@ pub const FLASH_SIZE: usize = 256 * 1024;
 pub const RESET_PIN: u32 = 18;
 pub const APPROTECT_MIN_BUILD_CODE: u8 = b'D';
 
-embassy_hal_internal::peripherals! {
+crate::peripherals! {
     // USB
     USBD,
 

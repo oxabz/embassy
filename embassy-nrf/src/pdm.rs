@@ -26,6 +26,7 @@ pub use crate::pac::pdm::vals::Freq as Frequency;
 ))]
 pub use crate::pac::pdm::vals::Ratio;
 use crate::{interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// Interrupt handler
 pub struct InterruptHandler<T: Instance> {
@@ -91,14 +92,14 @@ impl<'d, T: Instance> Pdm<'d, T> {
     pub fn new(
         pdm: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        clk: Peri<'d, impl GpioPin>,
-        din: Peri<'d, impl GpioPin>,
+        clk: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        din: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(pdm, clk.into(), din.into(), config)
     }
 
-    fn new_inner(pdm: Peri<'d, T>, clk: Peri<'d, AnyPin>, din: Peri<'d, AnyPin>, config: Config) -> Self {
+    fn new_inner(pdm: Peri<'d, T>, clk: Peri<'d, AnyPin<T::Domain>>, din: Peri<'d, AnyPin<T::Domain>>, config: Config) -> Self {
         let r = T::regs();
 
         // setup gpio pins
@@ -444,7 +445,7 @@ pub(crate) trait SealedInstance {
 
 /// PDM peripheral instance
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral
     type Interrupt: interrupt::typelevel::Interrupt;
 }

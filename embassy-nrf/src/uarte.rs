@@ -33,6 +33,7 @@ use crate::ppi::{AnyConfigurableChannel, ConfigurableChannel, Event, Ppi, Task};
 use crate::timer::{Frequency, Instance as TimerInstance, Timer};
 use crate::util::slice_in_ram_or;
 use crate::{interrupt, pac};
+use crate::domain::{Domain, DomainSpecific};
 
 /// UARTE config.
 #[derive(Clone)]
@@ -155,8 +156,8 @@ impl<'d, T: Instance> Uarte<'d, T> {
     /// Create a new UARTE without hardware flow control
     pub fn new(
         uarte: Peri<'d, T>,
-        rxd: Peri<'d, impl GpioPin>,
-        txd: Peri<'d, impl GpioPin>,
+        rxd: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        txd: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
         config: Config,
     ) -> Self {
@@ -166,10 +167,10 @@ impl<'d, T: Instance> Uarte<'d, T> {
     /// Create a new UARTE with hardware flow control (RTS/CTS)
     pub fn new_with_rtscts(
         uarte: Peri<'d, T>,
-        rxd: Peri<'d, impl GpioPin>,
-        txd: Peri<'d, impl GpioPin>,
-        cts: Peri<'d, impl GpioPin>,
-        rts: Peri<'d, impl GpioPin>,
+        rxd: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        txd: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        cts: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        rts: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
         config: Config,
     ) -> Self {
@@ -185,10 +186,10 @@ impl<'d, T: Instance> Uarte<'d, T> {
 
     fn new_inner(
         uarte: Peri<'d, T>,
-        rxd: Peri<'d, AnyPin>,
-        txd: Peri<'d, AnyPin>,
-        cts: Option<Peri<'d, AnyPin>>,
-        rts: Option<Peri<'d, AnyPin>>,
+        rxd: Peri<'d, AnyPin<T::Domain>>,
+        txd: Peri<'d, AnyPin<T::Domain>>,
+        cts: Option<Peri<'d, AnyPin<T::Domain>>>,
+        rts: Option<Peri<'d, AnyPin<T::Domain>>>,
         config: Config,
     ) -> Self {
         let r = T::regs();
@@ -235,17 +236,17 @@ impl<'d, T: Instance> Uarte<'d, T> {
     /// Split the Uarte into the transmitter and receiver with idle support parts.
     ///
     /// This is useful to concurrently transmit and receive from independent tasks.
-    pub fn split_with_idle<U: TimerInstance>(
+    pub fn split_with_idle<U: TimerInstance<Domain = T::Domain>>(
         self,
         timer: Peri<'d, U>,
-        ppi_ch1: Peri<'d, impl ConfigurableChannel + 'd>,
-        ppi_ch2: Peri<'d, impl ConfigurableChannel + 'd>,
+        ppi_ch1: Peri<'d, impl ConfigurableChannel<Domain = T::Domain> + 'd>,
+        ppi_ch2: Peri<'d, impl ConfigurableChannel<Domain = T::Domain> + 'd>,
     ) -> (UarteTx<'d, T>, UarteRxWithIdle<'d, T, U>) {
         (self.tx, self.rx.with_idle(timer, ppi_ch1, ppi_ch2))
     }
 
     /// Return the endtx event for use with PPI
-    pub fn event_endtx(&self) -> Event {
+    pub fn event_endtx(&self) -> Event<T::Domain> {
         let r = T::regs();
         Event::from_reg(r.events_endtx())
     }
@@ -281,7 +282,7 @@ impl<'d, T: Instance> Uarte<'d, T> {
     }
 }
 
-pub(crate) fn configure_tx_pins(r: pac::uarte::Uarte, txd: Peri<'_, AnyPin>, cts: Option<Peri<'_, AnyPin>>) {
+pub(crate) fn configure_tx_pins<D: Domain + 'static>(r: pac::uarte::Uarte, txd: Peri<'_, AnyPin<D>>, cts: Option<Peri<'_, AnyPin<D>>>) {
     txd.set_high();
     txd.conf().write(|w| {
         w.set_dir(gpiovals::Dir::OUTPUT);
@@ -300,7 +301,7 @@ pub(crate) fn configure_tx_pins(r: pac::uarte::Uarte, txd: Peri<'_, AnyPin>, cts
     r.psel().cts().write_value(cts.psel_bits());
 }
 
-pub(crate) fn configure_rx_pins(r: pac::uarte::Uarte, rxd: Peri<'_, AnyPin>, rts: Option<Peri<'_, AnyPin>>) {
+pub(crate) fn configure_rx_pins<D: Domain + 'static>(r: pac::uarte::Uarte, rxd: Peri<'_, AnyPin<D>>, rts: Option<Peri<'_, AnyPin<D>>>) {
     rxd.conf().write(|w| {
         w.set_dir(gpiovals::Dir::INPUT);
         w.set_input(gpiovals::Input::CONNECT);
@@ -348,7 +349,7 @@ impl<'d, T: Instance> UarteTx<'d, T> {
     pub fn new(
         uarte: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        txd: Peri<'d, impl GpioPin>,
+        txd: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(uarte, txd.into(), None, config)
@@ -358,14 +359,14 @@ impl<'d, T: Instance> UarteTx<'d, T> {
     pub fn new_with_rtscts(
         uarte: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        txd: Peri<'d, impl GpioPin>,
-        cts: Peri<'d, impl GpioPin>,
+        txd: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        cts: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(uarte, txd.into(), Some(cts.into()), config)
     }
 
-    fn new_inner(uarte: Peri<'d, T>, txd: Peri<'d, AnyPin>, cts: Option<Peri<'d, AnyPin>>, config: Config) -> Self {
+    fn new_inner(uarte: Peri<'d, T>, txd: Peri<'d, AnyPin<T::Domain>>, cts: Option<Peri<'d, AnyPin<T::Domain>>>, config: Config) -> Self {
         let r = T::regs();
 
         configure(r, config, cts.is_some());
@@ -515,7 +516,7 @@ impl<'a, T: Instance> Drop for UarteTx<'a, T> {
 
         let s = T::state();
 
-        drop_tx_rx(r, s);
+        drop_tx_rx::<T::Domain>(r, s);
     }
 }
 
@@ -524,7 +525,7 @@ impl<'d, T: Instance> UarteRx<'d, T> {
     pub fn new(
         uarte: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        rxd: Peri<'d, impl GpioPin>,
+        rxd: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(uarte, rxd.into(), None, config)
@@ -534,8 +535,8 @@ impl<'d, T: Instance> UarteRx<'d, T> {
     pub fn new_with_rtscts(
         uarte: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        rxd: Peri<'d, impl GpioPin>,
-        rts: Peri<'d, impl GpioPin>,
+        rxd: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        rts: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(uarte, rxd.into(), Some(rts.into()), config)
@@ -549,7 +550,7 @@ impl<'d, T: Instance> UarteRx<'d, T> {
         ErrorSource::from_bits_truncate(err_bits.0).check()
     }
 
-    fn new_inner(uarte: Peri<'d, T>, rxd: Peri<'d, AnyPin>, rts: Option<Peri<'d, AnyPin>>, config: Config) -> Self {
+    fn new_inner(uarte: Peri<'d, T>, rxd: Peri<'d, AnyPin<T::Domain>>, rts: Option<Peri<'d, AnyPin<T::Domain>>>, config: Config) -> Self {
         let r = T::regs();
 
         configure(r, config, rts.is_some());
@@ -566,11 +567,11 @@ impl<'d, T: Instance> UarteRx<'d, T> {
     }
 
     /// Upgrade to an instance that supports idle line detection.
-    pub fn with_idle<U: TimerInstance>(
+    pub fn with_idle<U: TimerInstance<Domain = T::Domain>>(
         self,
         timer: Peri<'d, U>,
-        ppi_ch1: Peri<'d, impl ConfigurableChannel + 'd>,
-        ppi_ch2: Peri<'d, impl ConfigurableChannel + 'd>,
+        ppi_ch1: Peri<'d, impl ConfigurableChannel<Domain = T::Domain> + 'd>,
+        ppi_ch2: Peri<'d, impl ConfigurableChannel<Domain = T::Domain> + 'd>,
     ) -> UarteRxWithIdle<'d, T, U> {
         let timer = Timer::new(timer);
 
@@ -732,7 +733,7 @@ impl<'a, T: Instance> Drop for UarteRx<'a, T> {
 
         let s = T::state();
 
-        drop_tx_rx(r, s);
+        drop_tx_rx::<T::Domain>(r, s);
     }
 }
 
@@ -742,8 +743,8 @@ impl<'a, T: Instance> Drop for UarteRx<'a, T> {
 pub struct UarteRxWithIdle<'d, T: Instance, U: TimerInstance> {
     rx: UarteRx<'d, T>,
     timer: Timer<'d, U>,
-    ppi_ch1: Ppi<'d, AnyConfigurableChannel, 1, 2>,
-    _ppi_ch2: Ppi<'d, AnyConfigurableChannel, 1, 1>,
+    ppi_ch1: Ppi<'d, AnyConfigurableChannel<T::Domain>, 1, 2>,
+    _ppi_ch2: Ppi<'d, AnyConfigurableChannel<T::Domain>, 1, 1>,
 }
 
 impl<'d, T: Instance, U: TimerInstance> UarteRxWithIdle<'d, T, U> {
@@ -928,16 +929,16 @@ pub(crate) fn apply_workaround_for_enable_anomaly(r: pac::uarte::Uarte) {
     }
 }
 
-pub(crate) fn drop_tx_rx(r: pac::uarte::Uarte, s: &State) {
+pub(crate) fn drop_tx_rx<D: Domain + 'static>(r: pac::uarte::Uarte, s: &State) {
     if s.tx_rx_refcount.fetch_sub(1, Ordering::Relaxed) == 1 {
         // Finally we can disable, and we do so for the peripheral
         // i.e. not just rx concerns.
         r.enable().write(|w| w.set_enable(vals::Enable::DISABLED));
 
-        gpio::deconfigure_pin(r.psel().rxd().read());
-        gpio::deconfigure_pin(r.psel().txd().read());
-        gpio::deconfigure_pin(r.psel().rts().read());
-        gpio::deconfigure_pin(r.psel().cts().read());
+        gpio::deconfigure_pin::<D>(r.psel().rxd().read());
+        gpio::deconfigure_pin::<D>(r.psel().txd().read());
+        gpio::deconfigure_pin::<D>(r.psel().rts().read());
+        gpio::deconfigure_pin::<D>(r.psel().cts().read());
 
         trace!("uarte tx and rx drop: done");
     }
@@ -966,7 +967,7 @@ pub(crate) trait SealedInstance {
 
 /// UARTE peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

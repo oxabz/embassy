@@ -11,6 +11,7 @@ use embassy_hal_internal::PeripheralType;
 
 use crate::ppi::{Event, Task};
 use crate::{interrupt, pac, Peri};
+use crate::domain::DomainSpecific;
 
 /// An instance of the EGU.
 pub struct Egu<'d, T: Instance> {
@@ -38,7 +39,7 @@ pub(crate) trait SealedInstance {
 
 /// Basic Egu instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }
@@ -64,14 +65,14 @@ pub struct Trigger<'d, T: Instance> {
 
 impl<'d, T: Instance> Trigger<'d, T> {
     /// Get task for this trigger to use with PPI.
-    pub fn task(&self) -> Task<'d> {
+    pub fn task(&self) -> Task<'d, T::Domain> {
         let nr = self.number as usize;
         let regs = T::regs();
         Task::from_reg(regs.tasks_trigger(nr))
     }
 
     /// Get event for this trigger to use with PPI.
-    pub fn event(&self) -> Event<'d> {
+    pub fn event(&self) -> Event<'d, T::Domain> {
         let nr = self.number as usize;
         let regs = T::regs();
         Event::from_reg(regs.events_triggered(nr))

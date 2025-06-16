@@ -11,6 +11,7 @@ use embassy_sync::waitqueue::AtomicWaker;
 
 use crate::interrupt::typelevel::Interrupt;
 use crate::{interrupt, pac, ppi};
+use crate::domain::DomainSpecific;
 
 const EVENT_COUNT: usize = 16;
 
@@ -339,7 +340,7 @@ pub(crate) trait SealedInstance {
 
 /// IPC peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: PeripheralType + SealedInstance + 'static + Send {
+pub trait Instance: PeripheralType + DomainSpecific + SealedInstance + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

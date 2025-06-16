@@ -14,6 +14,7 @@ use crate::interrupt::typelevel::Interrupt;
 use crate::pac::gpio::vals as gpiovals;
 use crate::pac::qdec::vals;
 use crate::{interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// Quadrature decoder driver.
 pub struct Qdec<'d, T: Instance> {
@@ -64,8 +65,8 @@ impl<'d, T: Instance> Qdec<'d, T> {
     pub fn new(
         qdec: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        a: Peri<'d, impl GpioPin>,
-        b: Peri<'d, impl GpioPin>,
+        a: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        b: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(qdec, a.into(), b.into(), None, config)
@@ -75,9 +76,9 @@ impl<'d, T: Instance> Qdec<'d, T> {
     pub fn new_with_led(
         qdec: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        a: Peri<'d, impl GpioPin>,
-        b: Peri<'d, impl GpioPin>,
-        led: Peri<'d, impl GpioPin>,
+        a: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        b: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        led: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(qdec, a.into(), b.into(), Some(led.into()), config)
@@ -85,9 +86,9 @@ impl<'d, T: Instance> Qdec<'d, T> {
 
     fn new_inner(
         p: Peri<'d, T>,
-        a: Peri<'d, AnyPin>,
-        b: Peri<'d, AnyPin>,
-        led: Option<Peri<'d, AnyPin>>,
+        a: Peri<'d, AnyPin<T::Domain>>,
+        b: Peri<'d, AnyPin<T::Domain>>,
+        led: Option<Peri<'d, AnyPin<T::Domain>>>,
         config: Config,
     ) -> Self {
         let r = T::regs();
@@ -270,7 +271,7 @@ pub(crate) trait SealedInstance {
 
 /// qdec peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

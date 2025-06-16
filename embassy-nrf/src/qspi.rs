@@ -20,6 +20,7 @@ pub use crate::pac::qspi::vals::{
     Addrmode as AddressMode, Ppsize as WritePageSize, Readoc as ReadOpcode, Spimode as SpiMode, Writeoc as WriteOpcode,
 };
 use crate::{interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// Deep power-down config.
 pub struct DeepPowerDownConfig {
@@ -553,11 +554,11 @@ impl<'d, T: Instance> Drop for Qspi<'d, T> {
         // Note: we do NOT deconfigure CSN here. If DPM is in use and we disconnect CSN,
         // leaving it floating, the flash chip might read it as zero which would cause it to
         // spuriously exit DPM.
-        gpio::deconfigure_pin(r.psel().sck().read());
-        gpio::deconfigure_pin(r.psel().io0().read());
-        gpio::deconfigure_pin(r.psel().io1().read());
-        gpio::deconfigure_pin(r.psel().io2().read());
-        gpio::deconfigure_pin(r.psel().io3().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().sck().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().io0().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().io1().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().io2().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().io3().read());
 
         trace!("qspi: dropped");
     }
@@ -662,7 +663,7 @@ pub(crate) trait SealedInstance {
 
 /// QSPI peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

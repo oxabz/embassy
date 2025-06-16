@@ -12,6 +12,7 @@ use embassy_hal_internal::PeripheralType;
 use crate::pac::wdt::vals;
 pub use crate::pac::wdt::vals::{Halt as HaltConfig, Sleep as SleepConfig};
 use crate::{interrupt, pac, peripherals, Peri};
+use crate::domain::DomainSpecific;
 
 const MIN_TICKS: u32 = 15;
 
@@ -218,7 +219,7 @@ pub(crate) trait SealedInstance {
 
 /// WDT instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

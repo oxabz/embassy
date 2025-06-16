@@ -23,6 +23,7 @@ use crate::pac::gpio::vals as gpiovals;
 use crate::pac::twim::vals;
 use crate::util::slice_in_ram;
 use crate::{gpio, interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// TWIM config.
 #[non_exhaustive]
@@ -706,8 +707,8 @@ impl<'a, T: Instance> Drop for Twim<'a, T> {
         let r = T::regs();
         r.enable().write(|w| w.set_enable(vals::Enable::DISABLED));
 
-        gpio::deconfigure_pin(r.psel().sda().read());
-        gpio::deconfigure_pin(r.psel().scl().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().sda().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().scl().read());
 
         trace!("twim drop: done");
     }
@@ -732,7 +733,7 @@ pub(crate) trait SealedInstance {
 
 /// TWIM peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

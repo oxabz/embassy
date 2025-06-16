@@ -24,11 +24,12 @@ pub use pac::uarte::vals::{Baudrate, ConfigParity as Parity};
 use crate::gpio::{AnyPin, Pin as GpioPin};
 use crate::interrupt::typelevel::Interrupt;
 use crate::ppi::{
-    self, AnyConfigurableChannel, AnyGroup, Channel, ConfigurableChannel, Event, Group, Ppi, PpiGroup, Task,
+    AnyConfigurableChannel, AnyGroup, Channel, ConfigurableChannel, Event, Group, Ppi, PpiGroup, Task,
 };
 use crate::timer::{Instance as TimerInstance, Timer};
 use crate::uarte::{configure, configure_rx_pins, configure_tx_pins, drop_tx_rx, Config, Instance as UarteInstance};
 use crate::{interrupt, pac, EASY_DMA_SIZE};
+use crate::domain::Domain;
 
 pub(crate) struct State {
     tx_buf: RingBuffer,
@@ -121,7 +122,7 @@ impl<U: UarteInstance> interrupt::typelevel::Handler<U::Interrupt> for Interrupt
 
                     // Enable endrx -> startrx PPI channel.
                     // From this point on, if endrx happens, startrx is automatically fired.
-                    ppi::regs().chenset().write(|w| w.0 = 1 << chn);
+                    U::Domain::PPI.chenset().write(|w| w.0 = 1 << chn);
 
                     // It is possible that endrx happened BEFORE enabling the PPI. In this case
                     // the PPI channel doesn't trigger, and we'd hang. We have to detect this
@@ -145,7 +146,7 @@ impl<U: UarteInstance> interrupt::typelevel::Handler<U::Interrupt> for Interrupt
 
                     // Check if the PPI channel is still enabled. The PPI channel disables itself
                     // when it fires, so if it's still enabled it hasn't fired.
-                    let ppi_ch_enabled = ppi::regs().chen().read().ch(chn as _);
+                    let ppi_ch_enabled = U::Domain::PPI.chen().read().ch(chn as _);
 
                     // if rxend happened, and the ppi channel hasn't fired yet, the rxend got missed.
                     // this condition also naturally matches if `!started`, needed to kickstart the DMA.
@@ -153,7 +154,7 @@ impl<U: UarteInstance> interrupt::typelevel::Handler<U::Interrupt> for Interrupt
                         //trace!("manually starting.");
 
                         // disable the ppi ch, it's of no use anymore.
-                        ppi::regs().chenclr().write(|w| w.set_ch(chn as _, true));
+                        U::Domain::PPI.chenclr().write(|w| w.set_ch(chn as _, true));
 
                         // manually start
                         r.tasks_startrx().write_value(1);
@@ -207,14 +208,14 @@ impl<U: UarteInstance> interrupt::typelevel::Handler<U::Interrupt> for Interrupt
 }
 
 /// Buffered UARTE driver.
-pub struct BufferedUarte<'d, U: UarteInstance, T: TimerInstance> {
+pub struct BufferedUarte<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> {
     tx: BufferedUarteTx<'d, U>,
-    rx: BufferedUarteRx<'d, U, T>,
+    rx: BufferedUarteRx<'d, D, U, T>,
 }
 
-impl<'d, U: UarteInstance, T: TimerInstance> Unpin for BufferedUarte<'d, U, T> {}
+impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> Unpin for BufferedUarte<'d, D, U, T> {}
 
-impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarte<'d, U, T> {
+impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> BufferedUarte<'d, D, U, T> {
     /// Create a new BufferedUarte without hardware flow control.
     ///
     /// # Panics
@@ -224,11 +225,11 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarte<'d, U, T> {
     pub fn new(
         uarte: Peri<'d, U>,
         timer: Peri<'d, T>,
-        ppi_ch1: Peri<'d, impl ConfigurableChannel>,
-        ppi_ch2: Peri<'d, impl ConfigurableChannel>,
-        ppi_group: Peri<'d, impl Group>,
-        rxd: Peri<'d, impl GpioPin>,
-        txd: Peri<'d, impl GpioPin>,
+        ppi_ch1: Peri<'d, impl ConfigurableChannel<Domain = D>>,
+        ppi_ch2: Peri<'d, impl ConfigurableChannel<Domain = D>>,
+        ppi_group: Peri<'d, impl Group<Domain = D>>,
+        rxd: Peri<'d, impl GpioPin<Domain = D>>,
+        txd: Peri<'d, impl GpioPin<Domain = D>>,
         _irq: impl interrupt::typelevel::Binding<U::Interrupt, InterruptHandler<U>> + 'd,
         config: Config,
         rx_buffer: &'d mut [u8],
@@ -259,13 +260,13 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarte<'d, U, T> {
     pub fn new_with_rtscts(
         uarte: Peri<'d, U>,
         timer: Peri<'d, T>,
-        ppi_ch1: Peri<'d, impl ConfigurableChannel>,
-        ppi_ch2: Peri<'d, impl ConfigurableChannel>,
-        ppi_group: Peri<'d, impl Group>,
-        rxd: Peri<'d, impl GpioPin>,
-        txd: Peri<'d, impl GpioPin>,
-        cts: Peri<'d, impl GpioPin>,
-        rts: Peri<'d, impl GpioPin>,
+        ppi_ch1: Peri<'d, impl ConfigurableChannel<Domain = D>>,
+        ppi_ch2: Peri<'d, impl ConfigurableChannel<Domain = D>>,
+        ppi_group: Peri<'d, impl Group<Domain = D>>,
+        rxd: Peri<'d, impl GpioPin<Domain = D>>,
+        txd: Peri<'d, impl GpioPin<Domain = D>>,
+        cts: Peri<'d, impl GpioPin<Domain = D>>,
+        rts: Peri<'d, impl GpioPin<Domain = D>>,
         _irq: impl interrupt::typelevel::Binding<U::Interrupt, InterruptHandler<U>> + 'd,
         config: Config,
         rx_buffer: &'d mut [u8],
@@ -291,13 +292,13 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarte<'d, U, T> {
     fn new_inner(
         peri: Peri<'d, U>,
         timer: Peri<'d, T>,
-        ppi_ch1: Peri<'d, AnyConfigurableChannel>,
-        ppi_ch2: Peri<'d, AnyConfigurableChannel>,
-        ppi_group: Peri<'d, AnyGroup>,
-        rxd: Peri<'d, AnyPin>,
-        txd: Peri<'d, AnyPin>,
-        cts: Option<Peri<'d, AnyPin>>,
-        rts: Option<Peri<'d, AnyPin>>,
+        ppi_ch1: Peri<'d, AnyConfigurableChannel<D>>,
+        ppi_ch2: Peri<'d, AnyConfigurableChannel<D>>,
+        ppi_group: Peri<'d, AnyGroup<D>>,
+        rxd: Peri<'d, AnyPin<D>>,
+        txd: Peri<'d, AnyPin<D>>,
+        cts: Option<Peri<'d, AnyPin<D>>>,
+        rts: Option<Peri<'d, AnyPin<D>>>,
         config: Config,
         rx_buffer: &'d mut [u8],
         tx_buffer: &'d mut [u8],
@@ -325,7 +326,7 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarte<'d, U, T> {
     /// Split the UART in reader and writer parts.
     ///
     /// This allows reading and writing concurrently from independent tasks.
-    pub fn split(self) -> (BufferedUarteRx<'d, U, T>, BufferedUarteTx<'d, U>) {
+    pub fn split(self) -> (BufferedUarteRx<'d, D, U, T>, BufferedUarteTx<'d, U>) {
         (self.rx, self.tx)
     }
 
@@ -333,7 +334,7 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarte<'d, U, T> {
     ///
     /// The returned halves borrow from `self`, so you can drop them and go back to using
     /// the "un-split" `self`. This allows temporarily splitting the UART.
-    pub fn split_by_ref(&mut self) -> (&mut BufferedUarteRx<'d, U, T>, &mut BufferedUarteTx<'d, U>) {
+    pub fn split_by_ref(&mut self) -> (&mut BufferedUarteRx<'d, D, U, T>, &mut BufferedUarteTx<'d, U>) {
         (&mut self.rx, &mut self.tx)
     }
 
@@ -377,7 +378,7 @@ impl<'d, U: UarteInstance> BufferedUarteTx<'d, U> {
     /// Create a new BufferedUarteTx without hardware flow control.
     pub fn new(
         uarte: Peri<'d, U>,
-        txd: Peri<'d, impl GpioPin>,
+        txd: Peri<'d, impl GpioPin<Domain = U::Domain>>,
         _irq: impl interrupt::typelevel::Binding<U::Interrupt, InterruptHandler<U>> + 'd,
         config: Config,
         tx_buffer: &'d mut [u8],
@@ -392,8 +393,8 @@ impl<'d, U: UarteInstance> BufferedUarteTx<'d, U> {
     /// Panics if `rx_buffer.len()` is odd.
     pub fn new_with_cts(
         uarte: Peri<'d, U>,
-        txd: Peri<'d, impl GpioPin>,
-        cts: Peri<'d, impl GpioPin>,
+        txd: Peri<'d, impl GpioPin<Domain = U::Domain>>,
+        cts: Peri<'d, impl GpioPin<Domain = U::Domain>>,
         _irq: impl interrupt::typelevel::Binding<U::Interrupt, InterruptHandler<U>> + 'd,
         config: Config,
         tx_buffer: &'d mut [u8],
@@ -403,8 +404,8 @@ impl<'d, U: UarteInstance> BufferedUarteTx<'d, U> {
 
     fn new_inner(
         peri: Peri<'d, U>,
-        txd: Peri<'d, AnyPin>,
-        cts: Option<Peri<'d, AnyPin>>,
+        txd: Peri<'d, AnyPin<U::Domain>>,
+        cts: Option<Peri<'d, AnyPin<U::Domain>>>,
         config: Config,
         tx_buffer: &'d mut [u8],
     ) -> Self {
@@ -423,8 +424,8 @@ impl<'d, U: UarteInstance> BufferedUarteTx<'d, U> {
 
     fn new_innerer(
         peri: Peri<'d, U>,
-        txd: Peri<'d, AnyPin>,
-        cts: Option<Peri<'d, AnyPin>>,
+        txd: Peri<'d, AnyPin<U::Domain>>,
+        cts: Option<Peri<'d, AnyPin<U::Domain>>>,
         tx_buffer: &'d mut [u8],
     ) -> Self {
         let r = U::regs();
@@ -532,20 +533,20 @@ impl<'a, U: UarteInstance> Drop for BufferedUarteTx<'a, U> {
         unsafe { s.tx_buf.deinit() }
 
         let s = U::state();
-        drop_tx_rx(r, s);
+        drop_tx_rx::<U::Domain>(r, s);
     }
 }
 
 /// Reader part of the buffered UARTE driver.
-pub struct BufferedUarteRx<'d, U: UarteInstance, T: TimerInstance> {
+pub struct BufferedUarteRx<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> {
     _peri: Peri<'d, U>,
     timer: Timer<'d, T>,
-    _ppi_ch1: Ppi<'d, AnyConfigurableChannel, 1, 1>,
-    _ppi_ch2: Ppi<'d, AnyConfigurableChannel, 1, 2>,
-    _ppi_group: PpiGroup<'d, AnyGroup>,
+    _ppi_ch1: Ppi<'d, AnyConfigurableChannel<D>, 1, 1>,
+    _ppi_ch2: Ppi<'d, AnyConfigurableChannel<D>, 1, 2>,
+    _ppi_group: PpiGroup<'d, AnyGroup<D>>,
 }
 
-impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarteRx<'d, U, T> {
+impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> BufferedUarteRx<'d, D, U, T> {
     /// Create a new BufferedUarte without hardware flow control.
     ///
     /// # Panics
@@ -555,11 +556,11 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarteRx<'d, U, T> {
     pub fn new(
         uarte: Peri<'d, U>,
         timer: Peri<'d, T>,
-        ppi_ch1: Peri<'d, impl ConfigurableChannel>,
-        ppi_ch2: Peri<'d, impl ConfigurableChannel>,
-        ppi_group: Peri<'d, impl Group>,
+        ppi_ch1: Peri<'d, impl ConfigurableChannel<Domain = D>>,
+        ppi_ch2: Peri<'d, impl ConfigurableChannel<Domain = D>>,
+        ppi_group: Peri<'d, impl Group<Domain = D>>,
         _irq: impl interrupt::typelevel::Binding<U::Interrupt, InterruptHandler<U>> + 'd,
-        rxd: Peri<'d, impl GpioPin>,
+        rxd: Peri<'d, impl GpioPin<Domain = D>>,
         config: Config,
         rx_buffer: &'d mut [u8],
     ) -> Self {
@@ -585,11 +586,11 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarteRx<'d, U, T> {
     pub fn new_with_rts(
         uarte: Peri<'d, U>,
         timer: Peri<'d, T>,
-        ppi_ch1: Peri<'d, impl ConfigurableChannel>,
-        ppi_ch2: Peri<'d, impl ConfigurableChannel>,
-        ppi_group: Peri<'d, impl Group>,
-        rxd: Peri<'d, impl GpioPin>,
-        rts: Peri<'d, impl GpioPin>,
+        ppi_ch1: Peri<'d, impl ConfigurableChannel<Domain = D>>,
+        ppi_ch2: Peri<'d, impl ConfigurableChannel<Domain = D>>,
+        ppi_group: Peri<'d, impl Group<Domain = D>>,
+        rxd: Peri<'d, impl GpioPin<Domain = D>>,
+        rts: Peri<'d, impl GpioPin<Domain = D>>,
         _irq: impl interrupt::typelevel::Binding<U::Interrupt, InterruptHandler<U>> + 'd,
         config: Config,
         rx_buffer: &'d mut [u8],
@@ -611,11 +612,11 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarteRx<'d, U, T> {
     fn new_inner(
         peri: Peri<'d, U>,
         timer: Peri<'d, T>,
-        ppi_ch1: Peri<'d, AnyConfigurableChannel>,
-        ppi_ch2: Peri<'d, AnyConfigurableChannel>,
-        ppi_group: Peri<'d, AnyGroup>,
-        rxd: Peri<'d, AnyPin>,
-        rts: Option<Peri<'d, AnyPin>>,
+        ppi_ch1: Peri<'d, AnyConfigurableChannel<D>>,
+        ppi_ch2: Peri<'d, AnyConfigurableChannel<D>>,
+        ppi_group: Peri<'d, AnyGroup<D>>,
+        rxd: Peri<'d, AnyPin<D>>,
+        rts: Option<Peri<'d, AnyPin<D>>>,
         config: Config,
         rx_buffer: &'d mut [u8],
     ) -> Self {
@@ -636,11 +637,11 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarteRx<'d, U, T> {
     fn new_innerer(
         peri: Peri<'d, U>,
         timer: Peri<'d, T>,
-        ppi_ch1: Peri<'d, AnyConfigurableChannel>,
-        ppi_ch2: Peri<'d, AnyConfigurableChannel>,
-        ppi_group: Peri<'d, AnyGroup>,
-        rxd: Peri<'d, AnyPin>,
-        rts: Option<Peri<'d, AnyPin>>,
+        ppi_ch1: Peri<'d, AnyConfigurableChannel<D>>,
+        ppi_ch2: Peri<'d, AnyConfigurableChannel<D>>,
+        ppi_group: Peri<'d, AnyGroup<D>>,
+        rxd: Peri<'d, AnyPin<D>>,
+        rts: Option<Peri<'d, AnyPin<D>>>,
         rx_buffer: &'d mut [u8],
     ) -> Self {
         assert!(rx_buffer.len() % 2 == 0);
@@ -784,7 +785,7 @@ impl<'d, U: UarteInstance, T: TimerInstance> BufferedUarteRx<'d, U, T> {
     }
 }
 
-impl<'a, U: UarteInstance, T: TimerInstance> Drop for BufferedUarteRx<'a, U, T> {
+impl<'a, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> Drop for BufferedUarteRx<'a, D, U, T> {
     fn drop(&mut self) {
         self._ppi_group.disable_all();
 
@@ -805,7 +806,7 @@ impl<'a, U: UarteInstance, T: TimerInstance> Drop for BufferedUarteRx<'a, U, T> 
         unsafe { s.rx_buf.deinit() }
 
         let s = U::state();
-        drop_tx_rx(r, s);
+        drop_tx_rx::<D>(r, s);
     }
 }
 
@@ -818,11 +819,11 @@ mod _embedded_io {
         }
     }
 
-    impl<'d, U: UarteInstance, T: TimerInstance> embedded_io_async::ErrorType for BufferedUarte<'d, U, T> {
+    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::ErrorType for BufferedUarte<'d, D, U, T> {
         type Error = Error;
     }
 
-    impl<'d, U: UarteInstance, T: TimerInstance> embedded_io_async::ErrorType for BufferedUarteRx<'d, U, T> {
+    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::ErrorType for BufferedUarteRx<'d, D, U, T> {
         type Error = Error;
     }
 
@@ -830,31 +831,31 @@ mod _embedded_io {
         type Error = Error;
     }
 
-    impl<'d, U: UarteInstance, T: TimerInstance> embedded_io_async::Read for BufferedUarte<'d, U, T> {
+    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::Read for BufferedUarte<'d, D, U, T> {
         async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
             self.read(buf).await
         }
     }
 
-    impl<'d: 'd, U: UarteInstance, T: TimerInstance> embedded_io_async::Read for BufferedUarteRx<'d, U, T> {
+    impl<'d: 'd, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::Read for BufferedUarteRx<'d, D, U, T> {
         async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
             self.read(buf).await
         }
     }
 
-    impl<'d, U: UarteInstance, T: TimerInstance + 'd> embedded_io_async::ReadReady for BufferedUarte<'d, U, T> {
+    impl<'d, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D> + 'd> embedded_io_async::ReadReady for BufferedUarte<'d, D, U, T> {
         fn read_ready(&mut self) -> Result<bool, Self::Error> {
-            BufferedUarteRx::<'d, U, T>::read_ready()
+            BufferedUarteRx::<'d, D, U, T>::read_ready()
         }
     }
 
-    impl<'d, U: UarteInstance, T: TimerInstance + 'd> embedded_io_async::ReadReady for BufferedUarteRx<'d, U, T> {
+    impl<'d, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D> + 'd> embedded_io_async::ReadReady for BufferedUarteRx<'d, D, U, T> {
         fn read_ready(&mut self) -> Result<bool, Self::Error> {
             Self::read_ready()
         }
     }
 
-    impl<'d, U: UarteInstance, T: TimerInstance> embedded_io_async::BufRead for BufferedUarte<'d, U, T> {
+    impl<'d, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D> + 'd> embedded_io_async::BufRead for BufferedUarte<'d, D, U, T> {
         async fn fill_buf(&mut self) -> Result<&[u8], Self::Error> {
             self.fill_buf().await
         }
@@ -864,7 +865,7 @@ mod _embedded_io {
         }
     }
 
-    impl<'d: 'd, U: UarteInstance, T: TimerInstance> embedded_io_async::BufRead for BufferedUarteRx<'d, U, T> {
+    impl<'d: 'd, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::BufRead for BufferedUarteRx<'d, D, U, T> {
         async fn fill_buf(&mut self) -> Result<&[u8], Self::Error> {
             self.fill_buf().await
         }
@@ -874,7 +875,7 @@ mod _embedded_io {
         }
     }
 
-    impl<'d, U: UarteInstance, T: TimerInstance> embedded_io_async::Write for BufferedUarte<'d, U, T> {
+    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::Write for BufferedUarte<'d, D, U, T> {
         async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
             self.write(buf).await
         }

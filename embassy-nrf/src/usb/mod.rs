@@ -21,6 +21,7 @@ use crate::interrupt::typelevel::Interrupt;
 use crate::pac::usbd::vals;
 use crate::util::slice_in_ram;
 use crate::{interrupt, pac};
+use crate::domain::DomainSpecific;
 
 static BUS_WAKER: AtomicWaker = AtomicWaker::new();
 static EP0_WAKER: AtomicWaker = AtomicWaker::new();
@@ -777,7 +778,7 @@ pub(crate) trait SealedInstance {
 
 /// USB peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

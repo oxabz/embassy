@@ -1,3 +1,5 @@
+use crate::domain_definition;
+
 /// Peripheral Access Crate
 #[allow(unused_imports)]
 #[rustfmt::skip]
@@ -203,48 +205,58 @@ pub const EASY_DMA_SIZE: usize = (1 << 16) - 1;
 
 //pub const FLASH_SIZE: usize = 1024 * 1024;
 
-embassy_hal_internal::peripherals! {
-    // GPIO port 0
-    P0_00,
-    P0_01,
-    P0_02,
-    P0_03,
-    P0_04,
-    P0_05,
-    P0_06,
+domain_definition!(MCUDomain, pac::DPPIC00);
+domain_definition!(RadioDomain, pac::DPPIC10);
+domain_definition!(PeriDomain, pac::DPPIC20);
+domain_definition!(LPDomain, pac::DPPIC30);
 
-    // GPIO port 1
-    P1_00,
-    P1_01,
-    P1_02,
-    P1_03,
-    P1_04,
-    P1_05,
-    P1_06,
-    P1_07,
-    P1_08,
-    P1_09,
-    P1_10,
-    P1_11,
-    P1_12,
-    P1_13,
-    P1_14,
-    P1_15,
-    P1_16,
+crate::domain::peripherals! {
+    super::MCUDomain => {
+        // GPIO port 2
+        P2_00,
+        P2_01,
+        P2_02,
+        P2_03,
+        P2_04,
+        P2_05,
+        P2_06,
+        P2_07,
+        P2_08,
+        P2_09,
+        P2_10,
+    }
 
+    super::PeriDomain => {
+        // GPIO port 1
+        P1_00,
+        P1_01,
+        P1_02,
+        P1_03,
+        P1_04,
+        P1_05,
+        P1_06,
+        P1_07,
+        P1_08,
+        P1_09,
+        P1_10,
+        P1_11,
+        P1_12,
+        P1_13,
+        P1_14,
+        P1_15,
+        P1_16,
+    }
 
-    // GPIO port 2
-    P2_00,
-    P2_01,
-    P2_02,
-    P2_03,
-    P2_04,
-    P2_05,
-    P2_06,
-    P2_07,
-    P2_08,
-    P2_09,
-    P2_10,
+    super::LPDomain => {
+        // GPIO port 0
+        P0_00,
+        P0_01,
+        P0_02,
+        P0_03,
+        P0_04,
+        P0_05,
+        P0_06,
+    }
 }
 
 impl_pin!(P0_00, 0, 0);

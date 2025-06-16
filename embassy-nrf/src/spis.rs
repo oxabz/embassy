@@ -19,6 +19,7 @@ use crate::pac::gpio::vals as gpiovals;
 use crate::pac::spis::vals;
 use crate::util::slice_in_ram_or;
 use crate::{interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// SPIS error
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,10 +107,10 @@ impl<'d, T: Instance> Spis<'d, T> {
     pub fn new(
         spis: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        cs: Peri<'d, impl GpioPin>,
-        sck: Peri<'d, impl GpioPin>,
-        miso: Peri<'d, impl GpioPin>,
-        mosi: Peri<'d, impl GpioPin>,
+        cs: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        sck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        miso: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        mosi: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(
@@ -126,9 +127,9 @@ impl<'d, T: Instance> Spis<'d, T> {
     pub fn new_txonly(
         spis: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        cs: Peri<'d, impl GpioPin>,
-        sck: Peri<'d, impl GpioPin>,
-        miso: Peri<'d, impl GpioPin>,
+        cs: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        sck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        miso: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(spis, cs.into(), Some(sck.into()), Some(miso.into()), None, config)
@@ -138,9 +139,9 @@ impl<'d, T: Instance> Spis<'d, T> {
     pub fn new_rxonly(
         spis: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        cs: Peri<'d, impl GpioPin>,
-        sck: Peri<'d, impl GpioPin>,
-        mosi: Peri<'d, impl GpioPin>,
+        cs: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        sck: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        mosi: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(spis, cs.into(), Some(sck.into()), None, Some(mosi.into()), config)
@@ -150,8 +151,8 @@ impl<'d, T: Instance> Spis<'d, T> {
     pub fn new_txonly_nosck(
         spis: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        cs: Peri<'d, impl GpioPin>,
-        miso: Peri<'d, impl GpioPin>,
+        cs: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        miso: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         Self::new_inner(spis, cs.into(), None, Some(miso.into()), None, config)
@@ -159,10 +160,10 @@ impl<'d, T: Instance> Spis<'d, T> {
 
     fn new_inner(
         spis: Peri<'d, T>,
-        cs: Peri<'d, AnyPin>,
-        sck: Option<Peri<'d, AnyPin>>,
-        miso: Option<Peri<'d, AnyPin>>,
-        mosi: Option<Peri<'d, AnyPin>>,
+        cs: Peri<'d, AnyPin<T::Domain>>,
+        sck: Option<Peri<'d, AnyPin<T::Domain>>>,
+        miso: Option<Peri<'d, AnyPin<T::Domain>>>,
+        mosi: Option<Peri<'d, AnyPin<T::Domain>>>,
         config: Config,
     ) -> Self {
         compiler_fence(Ordering::SeqCst);
@@ -437,10 +438,10 @@ impl<'d, T: Instance> Drop for Spis<'d, T> {
         let r = T::regs();
         r.enable().write(|w| w.set_enable(vals::Enable::DISABLED));
 
-        gpio::deconfigure_pin(r.psel().sck().read());
-        gpio::deconfigure_pin(r.psel().csn().read());
-        gpio::deconfigure_pin(r.psel().miso().read());
-        gpio::deconfigure_pin(r.psel().mosi().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().sck().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().csn().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().miso().read());
+        gpio::deconfigure_pin::<T::Domain>(r.psel().mosi().read());
 
         trace!("spis drop: done");
     }
@@ -465,7 +466,7 @@ pub(crate) trait SealedInstance {
 
 /// SPIS peripheral instance
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

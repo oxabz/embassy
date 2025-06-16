@@ -23,6 +23,7 @@ use embassy_sync::waitqueue::AtomicWaker;
 pub use pac::radio::vals::Txpower as TxPower;
 
 use crate::{interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// RADIO error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,7 +95,7 @@ macro_rules! impl_radio {
 
 /// Radio peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static + Send {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static + Send {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

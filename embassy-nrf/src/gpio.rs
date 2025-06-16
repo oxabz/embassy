@@ -6,7 +6,7 @@ use core::hint::unreachable_unchecked;
 
 use cfg_if::cfg_if;
 use embassy_hal_internal::{impl_peripheral, Peri, PeripheralType};
-
+use crate::domain::{Domain, DomainSpecific};
 use crate::pac;
 use crate::pac::common::{Reg, RW};
 use crate::pac::gpio;
@@ -42,14 +42,14 @@ pub enum Pull {
 }
 
 /// GPIO input driver.
-pub struct Input<'d> {
-    pub(crate) pin: Flex<'d>,
+pub struct Input<'d, D: Domain + 'static> {
+    pub(crate) pin: Flex<'d, D>,
 }
 
-impl<'d> Input<'d> {
+impl<'d, D: Domain + 'static> Input<'d, D> {
     /// Create GPIO input driver for a [Pin] with the provided [Pull] configuration.
     #[inline]
-    pub fn new(pin: Peri<'d, impl Pin>, pull: Pull) -> Self {
+    pub fn new(pin: Peri<'d, impl Pin<Domain = D>>, pull: Pull) -> Self {
         let mut pin = Flex::new(pin);
         pin.set_as_input(pull);
 
@@ -203,14 +203,14 @@ pub enum OutputDrive {
 }
 
 /// GPIO output driver.
-pub struct Output<'d> {
-    pub(crate) pin: Flex<'d>,
+pub struct Output<'d, D: Domain + 'static> {
+    pub(crate) pin: Flex<'d, D>,
 }
 
-impl<'d> Output<'d> {
+impl<'d, D: Domain + 'static> Output<'d, D> {
     /// Create GPIO output driver for a [Pin] with the provided [Level] and [OutputDriver] configuration.
     #[inline]
-    pub fn new(pin: Peri<'d, impl Pin>, initial_output: Level, drive: OutputDrive) -> Self {
+    pub fn new(pin: Peri<'d, impl Pin<Domain = D>>, initial_output: Level, drive: OutputDrive) -> Self {
         let mut pin = Flex::new(pin);
         match initial_output {
             Level::High => pin.set_high(),
@@ -309,17 +309,17 @@ fn convert_pull(pull: Pull) -> vals::Pull {
 /// This pin can either be a disconnected, input, or output pin, or both. The level register bit will remain
 /// set while not in output mode, so the pin's level will be 'remembered' when it is not in output
 /// mode.
-pub struct Flex<'d> {
-    pub(crate) pin: Peri<'d, AnyPin>,
+pub struct Flex<'d, D: Domain + 'static> {
+    pub(crate) pin: Peri<'d, AnyPin<D>>,
 }
 
-impl<'d> Flex<'d> {
+impl<'d, D: Domain + 'static> Flex<'d, D> {
     /// Wrap the pin in a `Flex`.
     ///
     /// The pin remains disconnected. The initial output level is unspecified, but can be changed
     /// before the pin is put into output mode.
     #[inline]
-    pub fn new(pin: Peri<'d, impl Pin>) -> Self {
+    pub fn new(pin: Peri<'d, impl Pin<Domain = D>>) -> Self {
         // Pin will be in disconnected state.
         Self { pin: pin.into() }
     }
@@ -447,7 +447,7 @@ impl<'d> Flex<'d> {
     }
 }
 
-impl<'d> Drop for Flex<'d> {
+impl<'d, D: Domain + 'static> Drop for Flex<'d, D> {
     fn drop(&mut self) {
         self.set_as_disconnected();
     }
@@ -502,7 +502,7 @@ pub(crate) trait SealedPin {
 
 /// Interface for a Pin that can be configured by an [Input] or [Output] driver, or converted to an [AnyPin].
 #[allow(private_bounds)]
-pub trait Pin: PeripheralType + Into<AnyPin> + SealedPin + Sized + 'static {
+pub trait Pin: PeripheralType + DomainSpecific + Into<AnyPin<Self::Domain>> + SealedPin + Sized + 'static {
     /// Number of the pin within the port (0..31)
     #[inline]
     fn pin(&self) -> u8 {
@@ -531,24 +531,30 @@ pub trait Pin: PeripheralType + Into<AnyPin> + SealedPin + Sized + 'static {
 }
 
 /// Type-erased GPIO pin
-pub struct AnyPin {
+pub struct AnyPin<D: Domain> {
+    pub(crate) domain: core::marker::PhantomData<D>,
     pub(crate) pin_port: u8,
 }
 
-impl AnyPin {
+impl<D: Domain> AnyPin<D> {
     /// Create an [AnyPin] for a specific pin.
     ///
     /// # Safety
     /// - `pin_port` should not in use by another driver.
     #[inline]
     pub unsafe fn steal(pin_port: u8) -> Peri<'static, Self> {
-        Peri::new_unchecked(Self { pin_port })
+        Peri::new_unchecked(Self { domain: Default::default(), pin_port })
     }
 }
 
-impl_peripheral!(AnyPin);
-impl Pin for AnyPin {}
-impl SealedPin for AnyPin {
+impl_peripheral!(AnyPin<D: Domain>);
+
+impl<D:Domain> DomainSpecific for AnyPin<D> {
+    type Domain = D;
+}
+
+impl<D: Domain + 'static> Pin for AnyPin<D> {}
+impl<D: Domain> SealedPin for AnyPin<D> {
     #[inline]
     fn pin_port(&self) -> u8 {
         self.pin_port
@@ -580,11 +586,11 @@ pub(crate) const DISCONNECTED: Psel = Psel(1 << 31);
 
 #[cfg(not(feature = "_nrf51"))]
 #[allow(dead_code)]
-pub(crate) fn deconfigure_pin(psel: Psel) {
+pub(crate) fn deconfigure_pin<D: Domain + 'static>(psel: Psel) {
     if psel.connect() == Connect::DISCONNECTED {
         return;
     }
-    unsafe { AnyPin::steal(psel.0 as _) }.conf().write(|w| {
+    unsafe { AnyPin::<D>::steal(psel.0 as _) }.conf().write(|w| {
         w.set_input(vals::Input::DISCONNECT);
     })
 }
@@ -601,9 +607,10 @@ macro_rules! impl_pin {
             }
         }
 
-        impl From<peripherals::$type> for crate::gpio::AnyPin {
+        impl From<peripherals::$type> for crate::gpio::AnyPin<<peripherals::$type as crate::domain::DomainSpecific>::Domain> {
             fn from(_val: peripherals::$type) -> Self {
                 Self {
+                    domain: Default::default(),
                     pin_port: $port_num * 32 + $pin_num,
                 }
             }
@@ -616,7 +623,7 @@ macro_rules! impl_pin {
 mod eh02 {
     use super::*;
 
-    impl<'d> embedded_hal_02::digital::v2::InputPin for Input<'d> {
+    impl<'d, D: Domain + 'static> embedded_hal_02::digital::v2::InputPin for Input<'d, D> {
         type Error = Infallible;
 
         fn is_high(&self) -> Result<bool, Self::Error> {
@@ -628,7 +635,7 @@ mod eh02 {
         }
     }
 
-    impl<'d> embedded_hal_02::digital::v2::OutputPin for Output<'d> {
+    impl<'d, D: Domain + 'static> embedded_hal_02::digital::v2::OutputPin for Output<'d, D> {
         type Error = Infallible;
 
         fn set_high(&mut self) -> Result<(), Self::Error> {
@@ -642,7 +649,7 @@ mod eh02 {
         }
     }
 
-    impl<'d> embedded_hal_02::digital::v2::StatefulOutputPin for Output<'d> {
+    impl<'d, D: Domain + 'static> embedded_hal_02::digital::v2::StatefulOutputPin for Output<'d, D> {
         fn is_set_high(&self) -> Result<bool, Self::Error> {
             Ok(self.is_set_high())
         }
@@ -652,7 +659,7 @@ mod eh02 {
         }
     }
 
-    impl<'d> embedded_hal_02::digital::v2::ToggleableOutputPin for Output<'d> {
+    impl<'d, D: Domain + 'static> embedded_hal_02::digital::v2::ToggleableOutputPin for Output<'d, D> {
         type Error = Infallible;
         #[inline]
         fn toggle(&mut self) -> Result<(), Self::Error> {
@@ -664,7 +671,7 @@ mod eh02 {
     /// Implement [`embedded_hal_02::digital::v2::InputPin`] for [`Flex`];
     ///
     /// If the pin is not in input mode the result is unspecified.
-    impl<'d> embedded_hal_02::digital::v2::InputPin for Flex<'d> {
+    impl<'d, D: Domain + 'static> embedded_hal_02::digital::v2::InputPin for Flex<'d, D> {
         type Error = Infallible;
 
         fn is_high(&self) -> Result<bool, Self::Error> {
@@ -676,7 +683,7 @@ mod eh02 {
         }
     }
 
-    impl<'d> embedded_hal_02::digital::v2::OutputPin for Flex<'d> {
+    impl<'d, D: Domain + 'static> embedded_hal_02::digital::v2::OutputPin for Flex<'d, D> {
         type Error = Infallible;
 
         fn set_high(&mut self) -> Result<(), Self::Error> {
@@ -690,7 +697,7 @@ mod eh02 {
         }
     }
 
-    impl<'d> embedded_hal_02::digital::v2::StatefulOutputPin for Flex<'d> {
+    impl<'d, D: Domain + 'static> embedded_hal_02::digital::v2::StatefulOutputPin for Flex<'d, D> {
         fn is_set_high(&self) -> Result<bool, Self::Error> {
             Ok(self.is_set_high())
         }
@@ -700,7 +707,7 @@ mod eh02 {
         }
     }
 
-    impl<'d> embedded_hal_02::digital::v2::ToggleableOutputPin for Flex<'d> {
+    impl<'d, D: Domain + 'static> embedded_hal_02::digital::v2::ToggleableOutputPin for Flex<'d, D> {
         type Error = Infallible;
         #[inline]
         fn toggle(&mut self) -> Result<(), Self::Error> {
@@ -710,11 +717,11 @@ mod eh02 {
     }
 }
 
-impl<'d> embedded_hal_1::digital::ErrorType for Input<'d> {
+impl<'d, D: Domain> embedded_hal_1::digital::ErrorType for Input<'d, D> {
     type Error = Infallible;
 }
 
-impl<'d> embedded_hal_1::digital::InputPin for Input<'d> {
+impl<'d, D: Domain + 'static> embedded_hal_1::digital::InputPin for Input<'d, D> {
     fn is_high(&mut self) -> Result<bool, Self::Error> {
         Ok((*self).is_high())
     }
@@ -724,11 +731,11 @@ impl<'d> embedded_hal_1::digital::InputPin for Input<'d> {
     }
 }
 
-impl<'d> embedded_hal_1::digital::ErrorType for Output<'d> {
+impl<'d, D: Domain> embedded_hal_1::digital::ErrorType for Output<'d, D> {
     type Error = Infallible;
 }
 
-impl<'d> embedded_hal_1::digital::OutputPin for Output<'d> {
+impl<'d, D: Domain + 'static> embedded_hal_1::digital::OutputPin for Output<'d, D> {
     fn set_high(&mut self) -> Result<(), Self::Error> {
         self.set_high();
         Ok(())
@@ -740,7 +747,7 @@ impl<'d> embedded_hal_1::digital::OutputPin for Output<'d> {
     }
 }
 
-impl<'d> embedded_hal_1::digital::StatefulOutputPin for Output<'d> {
+impl<'d, D: Domain + 'static> embedded_hal_1::digital::StatefulOutputPin for Output<'d, D> {
     fn is_set_high(&mut self) -> Result<bool, Self::Error> {
         Ok((*self).is_set_high())
     }
@@ -750,14 +757,14 @@ impl<'d> embedded_hal_1::digital::StatefulOutputPin for Output<'d> {
     }
 }
 
-impl<'d> embedded_hal_1::digital::ErrorType for Flex<'d> {
+impl<'d, D: Domain> embedded_hal_1::digital::ErrorType for Flex<'d, D> {
     type Error = Infallible;
 }
 
 /// Implement [`InputPin`] for [`Flex`];
 ///
 /// If the pin is not in input mode the result is unspecified.
-impl<'d> embedded_hal_1::digital::InputPin for Flex<'d> {
+impl<'d, D: Domain + 'static> embedded_hal_1::digital::InputPin for Flex<'d, D> {
     fn is_high(&mut self) -> Result<bool, Self::Error> {
         Ok((*self).is_high())
     }
@@ -767,7 +774,7 @@ impl<'d> embedded_hal_1::digital::InputPin for Flex<'d> {
     }
 }
 
-impl<'d> embedded_hal_1::digital::OutputPin for Flex<'d> {
+impl<'d, D: Domain + 'static> embedded_hal_1::digital::OutputPin for Flex<'d, D> {
     fn set_high(&mut self) -> Result<(), Self::Error> {
         self.set_high();
         Ok(())
@@ -779,7 +786,7 @@ impl<'d> embedded_hal_1::digital::OutputPin for Flex<'d> {
     }
 }
 
-impl<'d> embedded_hal_1::digital::StatefulOutputPin for Flex<'d> {
+impl<'d, D: Domain + 'static> embedded_hal_1::digital::StatefulOutputPin for Flex<'d, D> {
     fn is_set_high(&mut self) -> Result<bool, Self::Error> {
         Ok((*self).is_set_high())
     }

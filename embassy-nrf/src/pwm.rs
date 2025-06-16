@@ -12,26 +12,27 @@ use crate::pac::pwm::vals;
 use crate::ppi::{Event, Task};
 use crate::util::slice_in_ram_or;
 use crate::{interrupt, pac};
+use crate::domain::DomainSpecific;
 
 /// SimplePwm is the traditional pwm interface you're probably used to, allowing
 /// to simply set a duty cycle across up to four channels.
 pub struct SimplePwm<'d, T: Instance> {
     _peri: Peri<'d, T>,
     duty: [u16; 4],
-    ch0: Option<Peri<'d, AnyPin>>,
-    ch1: Option<Peri<'d, AnyPin>>,
-    ch2: Option<Peri<'d, AnyPin>>,
-    ch3: Option<Peri<'d, AnyPin>>,
+    ch0: Option<Peri<'d, AnyPin<T::Domain>>>,
+    ch1: Option<Peri<'d, AnyPin<T::Domain>>>,
+    ch2: Option<Peri<'d, AnyPin<T::Domain>>>,
+    ch3: Option<Peri<'d, AnyPin<T::Domain>>>,
 }
 
 /// SequencePwm allows you to offload the updating of a sequence of duty cycles
 /// to up to four channels, as well as repeat that sequence n times.
 pub struct SequencePwm<'d, T: Instance> {
     _peri: Peri<'d, T>,
-    ch0: Option<Peri<'d, AnyPin>>,
-    ch1: Option<Peri<'d, AnyPin>>,
-    ch2: Option<Peri<'d, AnyPin>>,
-    ch3: Option<Peri<'d, AnyPin>>,
+    ch0: Option<Peri<'d, AnyPin<T::Domain>>>,
+    ch1: Option<Peri<'d, AnyPin<T::Domain>>>,
+    ch2: Option<Peri<'d, AnyPin<T::Domain>>>,
+    ch3: Option<Peri<'d, AnyPin<T::Domain>>>,
 }
 
 /// PWM error
@@ -54,7 +55,7 @@ pub const PWM_CLK_HZ: u32 = 16_000_000;
 impl<'d, T: Instance> SequencePwm<'d, T> {
     /// Create a new 1-channel PWM
     #[allow(unused_unsafe)]
-    pub fn new_1ch(pwm: Peri<'d, T>, ch0: Peri<'d, impl GpioPin>, config: Config) -> Result<Self, Error> {
+    pub fn new_1ch(pwm: Peri<'d, T>, ch0: Peri<'d, impl GpioPin<Domain = T::Domain>>, config: Config) -> Result<Self, Error> {
         Self::new_inner(pwm, Some(ch0.into()), None, None, None, config)
     }
 
@@ -62,8 +63,8 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
     #[allow(unused_unsafe)]
     pub fn new_2ch(
         pwm: Peri<'d, T>,
-        ch0: Peri<'d, impl GpioPin>,
-        ch1: Peri<'d, impl GpioPin>,
+        ch0: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch1: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Result<Self, Error> {
         Self::new_inner(pwm, Some(ch0.into()), Some(ch1.into()), None, None, config)
@@ -73,9 +74,9 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
     #[allow(unused_unsafe)]
     pub fn new_3ch(
         pwm: Peri<'d, T>,
-        ch0: Peri<'d, impl GpioPin>,
-        ch1: Peri<'d, impl GpioPin>,
-        ch2: Peri<'d, impl GpioPin>,
+        ch0: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch1: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch2: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Result<Self, Error> {
         Self::new_inner(pwm, Some(ch0.into()), Some(ch1.into()), Some(ch2.into()), None, config)
@@ -85,10 +86,10 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
     #[allow(unused_unsafe)]
     pub fn new_4ch(
         pwm: Peri<'d, T>,
-        ch0: Peri<'d, impl GpioPin>,
-        ch1: Peri<'d, impl GpioPin>,
-        ch2: Peri<'d, impl GpioPin>,
-        ch3: Peri<'d, impl GpioPin>,
+        ch0: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch1: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch2: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch3: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Result<Self, Error> {
         Self::new_inner(
@@ -103,10 +104,10 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
 
     fn new_inner(
         _pwm: Peri<'d, T>,
-        ch0: Option<Peri<'d, AnyPin>>,
-        ch1: Option<Peri<'d, AnyPin>>,
-        ch2: Option<Peri<'d, AnyPin>>,
-        ch3: Option<Peri<'d, AnyPin>>,
+        ch0: Option<Peri<'d, AnyPin<T::Domain>>>,
+        ch1: Option<Peri<'d, AnyPin<T::Domain>>>,
+        ch2: Option<Peri<'d, AnyPin<T::Domain>>>,
+        ch3: Option<Peri<'d, AnyPin<T::Domain>>>,
         config: Config,
     ) -> Result<Self, Error> {
         let r = T::regs();
@@ -184,7 +185,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
 
     /// Returns reference to `Stopped` event endpoint for PPI.
     #[inline(always)]
-    pub fn event_stopped(&self) -> Event<'d> {
+    pub fn event_stopped(&self) -> Event<'d, T::Domain> {
         let r = T::regs();
 
         Event::from_reg(r.events_stopped())
@@ -192,7 +193,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
 
     /// Returns reference to `LoopsDone` event endpoint for PPI.
     #[inline(always)]
-    pub fn event_loops_done(&self) -> Event<'d> {
+    pub fn event_loops_done(&self) -> Event<'d, T::Domain> {
         let r = T::regs();
 
         Event::from_reg(r.events_loopsdone())
@@ -200,7 +201,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
 
     /// Returns reference to `PwmPeriodEnd` event endpoint for PPI.
     #[inline(always)]
-    pub fn event_pwm_period_end(&self) -> Event<'d> {
+    pub fn event_pwm_period_end(&self) -> Event<'d, T::Domain> {
         let r = T::regs();
 
         Event::from_reg(r.events_pwmperiodend())
@@ -208,7 +209,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
 
     /// Returns reference to `Seq0 End` event endpoint for PPI.
     #[inline(always)]
-    pub fn event_seq_end(&self) -> Event<'d> {
+    pub fn event_seq_end(&self) -> Event<'d, T::Domain> {
         let r = T::regs();
 
         Event::from_reg(r.events_seqend(0))
@@ -216,7 +217,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
 
     /// Returns reference to `Seq1 End` event endpoint for PPI.
     #[inline(always)]
-    pub fn event_seq1_end(&self) -> Event<'d> {
+    pub fn event_seq1_end(&self) -> Event<'d, T::Domain> {
         let r = T::regs();
 
         Event::from_reg(r.events_seqend(1))
@@ -224,7 +225,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
 
     /// Returns reference to `Seq0 Started` event endpoint for PPI.
     #[inline(always)]
-    pub fn event_seq0_started(&self) -> Event<'d> {
+    pub fn event_seq0_started(&self) -> Event<'d, T::Domain> {
         let r = T::regs();
 
         Event::from_reg(r.events_seqstarted(0))
@@ -232,7 +233,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
 
     /// Returns reference to `Seq1 Started` event endpoint for PPI.
     #[inline(always)]
-    pub fn event_seq1_started(&self) -> Event<'d> {
+    pub fn event_seq1_started(&self) -> Event<'d, T::Domain> {
         let r = T::regs();
 
         Event::from_reg(r.events_seqstarted(1))
@@ -243,7 +244,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
     ///
     /// Interacting with the sequence while it runs puts it in an unknown state
     #[inline(always)]
-    pub unsafe fn task_start_seq0(&self) -> Task<'d> {
+    pub unsafe fn task_start_seq0(&self) -> Task<'d, T::Domain> {
         let r = T::regs();
 
         Task::from_reg(r.tasks_seqstart(0))
@@ -254,7 +255,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
     ///
     /// Interacting with the sequence while it runs puts it in an unknown state
     #[inline(always)]
-    pub unsafe fn task_start_seq1(&self) -> Task<'d> {
+    pub unsafe fn task_start_seq1(&self) -> Task<'d, T::Domain> {
         let r = T::regs();
 
         Task::from_reg(r.tasks_seqstart(1))
@@ -265,7 +266,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
     ///
     /// Interacting with the sequence while it runs puts it in an unknown state
     #[inline(always)]
-    pub unsafe fn task_next_step(&self) -> Task<'d> {
+    pub unsafe fn task_next_step(&self) -> Task<'d, T::Domain> {
         let r = T::regs();
 
         Task::from_reg(r.tasks_nextstep())
@@ -276,7 +277,7 @@ impl<'d, T: Instance> SequencePwm<'d, T> {
     ///
     /// Interacting with the sequence while it runs puts it in an unknown state
     #[inline(always)]
-    pub unsafe fn task_stop(&self) -> Task<'d> {
+    pub unsafe fn task_stop(&self) -> Task<'d, T::Domain> {
         let r = T::regs();
 
         Task::from_reg(r.tasks_stop())
@@ -593,13 +594,13 @@ pub enum CounterMode {
 impl<'d, T: Instance> SimplePwm<'d, T> {
     /// Create a new 1-channel PWM
     #[allow(unused_unsafe)]
-    pub fn new_1ch(pwm: Peri<'d, T>, ch0: Peri<'d, impl GpioPin>) -> Self {
+    pub fn new_1ch(pwm: Peri<'d, T>, ch0: Peri<'d, impl GpioPin<Domain = T::Domain>>) -> Self {
         unsafe { Self::new_inner(pwm, Some(ch0.into()), None, None, None) }
     }
 
     /// Create a new 2-channel PWM
     #[allow(unused_unsafe)]
-    pub fn new_2ch(pwm: Peri<'d, T>, ch0: Peri<'d, impl GpioPin>, ch1: Peri<'d, impl GpioPin>) -> Self {
+    pub fn new_2ch(pwm: Peri<'d, T>, ch0: Peri<'d, impl GpioPin<Domain = T::Domain>>, ch1: Peri<'d, impl GpioPin<Domain = T::Domain>>) -> Self {
         Self::new_inner(pwm, Some(ch0.into()), Some(ch1.into()), None, None)
     }
 
@@ -607,9 +608,9 @@ impl<'d, T: Instance> SimplePwm<'d, T> {
     #[allow(unused_unsafe)]
     pub fn new_3ch(
         pwm: Peri<'d, T>,
-        ch0: Peri<'d, impl GpioPin>,
-        ch1: Peri<'d, impl GpioPin>,
-        ch2: Peri<'d, impl GpioPin>,
+        ch0: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch1: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch2: Peri<'d, impl GpioPin<Domain = T::Domain>>,
     ) -> Self {
         unsafe { Self::new_inner(pwm, Some(ch0.into()), Some(ch1.into()), Some(ch2.into()), None) }
     }
@@ -618,10 +619,10 @@ impl<'d, T: Instance> SimplePwm<'d, T> {
     #[allow(unused_unsafe)]
     pub fn new_4ch(
         pwm: Peri<'d, T>,
-        ch0: Peri<'d, impl GpioPin>,
-        ch1: Peri<'d, impl GpioPin>,
-        ch2: Peri<'d, impl GpioPin>,
-        ch3: Peri<'d, impl GpioPin>,
+        ch0: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch1: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch2: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        ch3: Peri<'d, impl GpioPin<Domain = T::Domain>>,
     ) -> Self {
         unsafe {
             Self::new_inner(
@@ -636,10 +637,10 @@ impl<'d, T: Instance> SimplePwm<'d, T> {
 
     fn new_inner(
         _pwm: Peri<'d, T>,
-        ch0: Option<Peri<'d, AnyPin>>,
-        ch1: Option<Peri<'d, AnyPin>>,
-        ch2: Option<Peri<'d, AnyPin>>,
-        ch3: Option<Peri<'d, AnyPin>>,
+        ch0: Option<Peri<'d, AnyPin<T::Domain>>>,
+        ch1: Option<Peri<'d, AnyPin<T::Domain>>>,
+        ch2: Option<Peri<'d, AnyPin<T::Domain>>>,
+        ch3: Option<Peri<'d, AnyPin<T::Domain>>>,
     ) -> Self {
         let r = T::regs();
 
@@ -859,7 +860,7 @@ pub(crate) trait SealedInstance {
 
 /// PWM peripheral instance.
 #[allow(private_bounds)]
-pub trait Instance: SealedInstance + PeripheralType + 'static {
+pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static {
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }

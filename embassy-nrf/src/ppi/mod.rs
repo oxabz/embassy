@@ -18,10 +18,11 @@
 use core::marker::PhantomData;
 use core::ptr::NonNull;
 
-use embassy_hal_internal::{impl_peripheral, Peri, PeripheralType};
+use embassy_hal_internal::{impl_peripheral, PeripheralType, Peri};
 
 use crate::pac::common::{Reg, RW, W};
 use crate::peripherals;
+use crate::domain::{Domain, DomainSpecific};
 
 #[cfg_attr(feature = "_dppi", path = "dppi.rs")]
 #[cfg_attr(feature = "_ppi", path = "ppi.rs")]
@@ -47,7 +48,7 @@ impl<'d, G: Group> PpiGroup<'d, G> {
     ///
     /// The group is initialized as containing no channels.
     pub fn new(g: Peri<'d, G>) -> Self {
-        let r = regs();
+        let r = G::Domain::PPI;
         let n = g.number();
         r.chg(n).write(|_| ());
 
@@ -61,7 +62,7 @@ impl<'d, G: Group> PpiGroup<'d, G> {
         &mut self,
         ch: &Ppi<'_, C, EVENT_COUNT, TASK_COUNT>,
     ) {
-        let r = regs();
+        let r = G::Domain::PPI;
         let ng = self.g.number();
         let nc = ch.ch.number();
         r.chg(ng).modify(|w| w.set_ch(nc, true));
@@ -74,7 +75,7 @@ impl<'d, G: Group> PpiGroup<'d, G> {
         &mut self,
         ch: &Ppi<'_, C, EVENT_COUNT, TASK_COUNT>,
     ) {
-        let r = regs();
+        let r = G::Domain::PPI;
         let ng = self.g.number();
         let nc = ch.ch.number();
         r.chg(ng).modify(|w| w.set_ch(nc, false));
@@ -83,35 +84,35 @@ impl<'d, G: Group> PpiGroup<'d, G> {
     /// Enable all the channels in this group.
     pub fn enable_all(&mut self) {
         let n = self.g.number();
-        regs().tasks_chg(n).en().write_value(1);
+        G::Domain::PPI.tasks_chg(n).en().write_value(1);
     }
 
     /// Disable all the channels in this group.
     pub fn disable_all(&mut self) {
         let n = self.g.number();
-        regs().tasks_chg(n).dis().write_value(1);
+        G::Domain::PPI.tasks_chg(n).dis().write_value(1);
     }
 
     /// Get a reference to the "enable all" task.
     ///
     /// When triggered, it will enable all the channels in this group.
-    pub fn task_enable_all(&self) -> Task<'d> {
+    pub fn task_enable_all(&self) -> Task<'d, G::Domain> {
         let n = self.g.number();
-        Task::from_reg(regs().tasks_chg(n).en())
+        Task::from_reg(G::Domain::PPI.tasks_chg(n).en())
     }
 
     /// Get a reference to the "disable all" task.
     ///
     /// When triggered, it will disable all the channels in this group.
-    pub fn task_disable_all(&self) -> Task<'d> {
+    pub fn task_disable_all(&self) -> Task<'d, G::Domain> {
         let n = self.g.number();
-        Task::from_reg(regs().tasks_chg(n).dis())
+        Task::from_reg(G::Domain::PPI.tasks_chg(n).dis())
     }
 }
 
 impl<'d, G: Group> Drop for PpiGroup<'d, G> {
     fn drop(&mut self) {
-        let r = regs();
+        let r = G::Domain::PPI;
         let n = self.g.number();
         r.chg(n).write(|_| ());
     }
@@ -125,9 +126,9 @@ const REGISTER_DPPI_CONFIG_OFFSET: usize = 0x80 / core::mem::size_of::<u32>();
 /// When a task is subscribed to a PPI channel, it will run when the channel is triggered by
 /// a published event.
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub struct Task<'d>(NonNull<u32>, PhantomData<&'d ()>);
+pub struct Task<'d, D: Domain>(NonNull<u32>, PhantomData<&'d D>);
 
-impl<'d> Task<'d> {
+impl<'d, D: Domain> Task<'d, D> {
     /// Create a new `Task` from a task register pointer
     ///
     /// # Safety
@@ -156,15 +157,15 @@ impl<'d> Task<'d> {
 /// # Safety
 ///
 /// NonNull is not send, but this event is only allowed to point at registers and those exist in any context on the same core.
-unsafe impl Send for Task<'_> {}
+unsafe impl<D: Domain> Send for Task<'_, D> {}
 
 /// Represents an event that a peripheral can publish.
 ///
 /// An event can be set to publish on a PPI channel when the event happens.
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub struct Event<'d>(NonNull<u32>, PhantomData<&'d ()>);
+pub struct Event<'d, D: Domain>(NonNull<u32>, PhantomData<&'d D>);
 
-impl<'d> Event<'d> {
+impl<'d, D: Domain> Event<'d, D> {
     /// Create a new `Event` from an event register pointer
     ///
     /// # Safety
@@ -198,7 +199,7 @@ impl<'d> Event<'d> {
 /// # Safety
 ///
 /// NonNull is not send, but this event is only allowed to point at registers and those exist in any context on the same core.
-unsafe impl Send for Event<'_> {}
+unsafe impl<D:Domain> Send for Event<'_, D> {}
 
 // ======================
 //       traits
@@ -208,20 +209,20 @@ pub(crate) trait SealedGroup {}
 
 /// Interface for PPI channels.
 #[allow(private_bounds)]
-pub trait Channel: SealedChannel + PeripheralType + Sized + 'static {
+pub trait Channel: SealedChannel + PeripheralType + crate::domain::DomainSpecific + Sized + 'static {
     /// Returns the number of the channel
     fn number(&self) -> usize;
 }
 
 /// Interface for PPI channels that can be configured.
-pub trait ConfigurableChannel: Channel + Into<AnyConfigurableChannel> {}
+pub trait ConfigurableChannel: Channel + Into<AnyConfigurableChannel<Self::Domain>> {}
 
 /// Interface for PPI channels that cannot be configured.
-pub trait StaticChannel: Channel + Into<AnyStaticChannel> {}
+pub trait StaticChannel: Channel + Into<AnyStaticChannel<Self::Domain>> {}
 
 /// Interface for a group of PPI channels.
 #[allow(private_bounds)]
-pub trait Group: SealedGroup + PeripheralType + Into<AnyGroup> + Sized + 'static {
+pub trait Group: SealedGroup + PeripheralType + crate::domain::DomainSpecific + Into<AnyGroup<Self::Domain>> + Sized + 'static {
     /// Returns the number of the group.
     fn number(&self) -> usize;
 }
@@ -231,31 +232,44 @@ pub trait Group: SealedGroup + PeripheralType + Into<AnyGroup> + Sized + 'static
 
 /// The any channel can represent any static channel at runtime.
 /// This can be used to have fewer generic parameters in some places.
-pub struct AnyStaticChannel {
+pub struct AnyStaticChannel<D: Domain> {
+    pub(crate) domain: PhantomData<D>,
     pub(crate) number: u8,
 }
-impl_peripheral!(AnyStaticChannel);
-impl SealedChannel for AnyStaticChannel {}
-impl Channel for AnyStaticChannel {
+impl_peripheral!(AnyStaticChannel<D: Domain>);
+
+impl<D:Domain> crate::domain::DomainSpecific for AnyStaticChannel<D> {
+    type Domain = D;
+}
+
+impl<D: Domain> SealedChannel for AnyStaticChannel<D> {}
+impl<D: Domain + 'static> Channel for AnyStaticChannel<D> {
     fn number(&self) -> usize {
         self.number as usize
     }
 }
-impl StaticChannel for AnyStaticChannel {}
+impl<D: Domain + 'static> StaticChannel for AnyStaticChannel<D> {}
 
 /// The any configurable channel can represent any configurable channel at runtime.
 /// This can be used to have fewer generic parameters in some places.
-pub struct AnyConfigurableChannel {
+pub struct AnyConfigurableChannel<D: Domain> {
+    pub(crate) domain: PhantomData<D>,
     pub(crate) number: u8,
 }
-impl_peripheral!(AnyConfigurableChannel);
-impl SealedChannel for AnyConfigurableChannel {}
-impl Channel for AnyConfigurableChannel {
+impl_peripheral!(AnyConfigurableChannel<D: Domain>);
+
+impl<D: Domain>  crate::domain::DomainSpecific for AnyConfigurableChannel<D> {
+    type Domain = D;
+}
+impl<D: Domain> SealedChannel for AnyConfigurableChannel<D> {}
+impl<D: Domain + 'static> Channel for AnyConfigurableChannel<D> {
     fn number(&self) -> usize {
         self.number as usize
     }
 }
-impl ConfigurableChannel for AnyConfigurableChannel {}
+
+
+impl<D: Domain + 'static> ConfigurableChannel for AnyConfigurableChannel<D> {}
 
 #[cfg(not(feature = "_nrf51"))]
 macro_rules! impl_ppi_channel {
@@ -270,9 +284,10 @@ macro_rules! impl_ppi_channel {
     ($type:ident, $number:expr => static) => {
         impl_ppi_channel!($type, $number);
         impl crate::ppi::StaticChannel for peripherals::$type {}
-        impl From<peripherals::$type> for crate::ppi::AnyStaticChannel {
+        impl From<peripherals::$type> for crate::ppi::AnyStaticChannel<<peripherals::$type as crate::domain::DomainSpecific>::Domain> {
             fn from(val: peripherals::$type) -> Self {
                 Self {
+                    domain: Default::default(),
                     number: crate::ppi::Channel::number(&val) as u8,
                 }
             }
@@ -281,9 +296,11 @@ macro_rules! impl_ppi_channel {
     ($type:ident, $number:expr => configurable) => {
         impl_ppi_channel!($type, $number);
         impl crate::ppi::ConfigurableChannel for peripherals::$type {}
-        impl From<peripherals::$type> for crate::ppi::AnyConfigurableChannel {
+        #[allow(private_bounds)]
+        impl From<peripherals::$type> for crate::ppi::AnyConfigurableChannel<<peripherals::$type as crate::domain::DomainSpecific>::Domain> {
             fn from(val: peripherals::$type) -> Self {
                 Self {
+                    domain: Default::default(),
                     number: crate::ppi::Channel::number(&val) as u8,
                 }
             }
@@ -295,12 +312,16 @@ macro_rules! impl_ppi_channel {
 //       groups
 
 /// A type erased PPI group.
-pub struct AnyGroup {
-    number: u8,
+pub struct AnyGroup<D:Domain> {
+    pub(crate) domain: PhantomData<D>,
+    pub(crate) number: u8,
 }
-impl_peripheral!(AnyGroup);
-impl SealedGroup for AnyGroup {}
-impl Group for AnyGroup {
+impl_peripheral!(AnyGroup<D:Domain>);
+impl<D:Domain> crate::domain::DomainSpecific for AnyGroup<D> {
+    type Domain = D;
+}
+impl<D:Domain> SealedGroup for AnyGroup<D> {}
+impl<D:Domain + 'static> Group for AnyGroup<D> {
     fn number(&self) -> usize {
         self.number as usize
     }
@@ -318,6 +339,7 @@ macro_rules! impl_group {
         impl From<peripherals::$type> for crate::ppi::AnyGroup {
             fn from(val: peripherals::$type) -> Self {
                 Self {
+                    domain: Default::default(),
                     number: crate::ppi::Group::number(&val) as u8,
                 }
             }
@@ -325,11 +347,11 @@ macro_rules! impl_group {
     };
 }
 
-impl_group!(PPI_GROUP0, 0);
-impl_group!(PPI_GROUP1, 1);
-impl_group!(PPI_GROUP2, 2);
-impl_group!(PPI_GROUP3, 3);
-#[cfg(not(feature = "_nrf51"))]
-impl_group!(PPI_GROUP4, 4);
-#[cfg(not(feature = "_nrf51"))]
-impl_group!(PPI_GROUP5, 5);
+// impl_group!(PPI_GROUP0, 0);
+// impl_group!(PPI_GROUP1, 1);
+// impl_group!(PPI_GROUP2, 2);
+// impl_group!(PPI_GROUP3, 3);
+// #[cfg(not(feature = "_nrf51"))]
+// impl_group!(PPI_GROUP4, 4);
+// #[cfg(not(feature = "_nrf51"))]
+// impl_group!(PPI_GROUP5, 5);

@@ -6,7 +6,7 @@ use core::hint::unreachable_unchecked;
 
 use cfg_if::cfg_if;
 use embassy_hal_internal::{impl_peripheral, Peri, PeripheralType};
-use crate::domain::{Domain, DomainSpecific};
+use crate::domain::{Domain, DomainSpecific, MCUDomain};
 use crate::pac;
 use crate::pac::common::{Reg, RW};
 use crate::pac::gpio;
@@ -42,7 +42,7 @@ pub enum Pull {
 }
 
 /// GPIO input driver.
-pub struct Input<'d, D: Domain + 'static> {
+pub struct Input<'d, D: Domain + 'static = MCUDomain> {
     pub(crate) pin: Flex<'d, D>,
 }
 
@@ -203,7 +203,7 @@ pub enum OutputDrive {
 }
 
 /// GPIO output driver.
-pub struct Output<'d, D: Domain + 'static> {
+pub struct Output<'d, D: Domain + 'static = MCUDomain> {
     pub(crate) pin: Flex<'d, D>,
 }
 
@@ -309,7 +309,7 @@ fn convert_pull(pull: Pull) -> vals::Pull {
 /// This pin can either be a disconnected, input, or output pin, or both. The level register bit will remain
 /// set while not in output mode, so the pin's level will be 'remembered' when it is not in output
 /// mode.
-pub struct Flex<'d, D: Domain + 'static> {
+pub struct Flex<'d, D: Domain + 'static = MCUDomain> {
     pub(crate) pin: Peri<'d, AnyPin<D>>,
 }
 
@@ -531,7 +531,7 @@ pub trait Pin: PeripheralType + DomainSpecific + Into<AnyPin<Self::Domain>> + Se
 }
 
 /// Type-erased GPIO pin
-pub struct AnyPin<D: Domain> {
+pub struct AnyPin<D: Domain = MCUDomain> {
     pub(crate) domain: core::marker::PhantomData<D>,
     pub(crate) pin_port: u8,
 }

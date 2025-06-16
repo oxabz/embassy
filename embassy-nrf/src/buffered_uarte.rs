@@ -29,7 +29,7 @@ use crate::ppi::{
 use crate::timer::{Instance as TimerInstance, Timer};
 use crate::uarte::{configure, configure_rx_pins, configure_tx_pins, drop_tx_rx, Config, Instance as UarteInstance};
 use crate::{interrupt, pac, EASY_DMA_SIZE};
-use crate::domain::Domain;
+use crate::domain::{Domain, MCUDomain};
 
 pub(crate) struct State {
     tx_buf: RingBuffer,
@@ -208,14 +208,14 @@ impl<U: UarteInstance> interrupt::typelevel::Handler<U::Interrupt> for Interrupt
 }
 
 /// Buffered UARTE driver.
-pub struct BufferedUarte<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> {
+pub struct BufferedUarte<'d, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>, D: Domain + 'static = MCUDomain> {
     tx: BufferedUarteTx<'d, U>,
-    rx: BufferedUarteRx<'d, D, U, T>,
+    rx: BufferedUarteRx<'d, U, T, D>,
 }
 
-impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> Unpin for BufferedUarte<'d, D, U, T> {}
+impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> Unpin for BufferedUarte<'d, U, T, D> {}
 
-impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> BufferedUarte<'d, D, U, T> {
+impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> BufferedUarte<'d, U, T, D> {
     /// Create a new BufferedUarte without hardware flow control.
     ///
     /// # Panics
@@ -326,7 +326,7 @@ impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Dom
     /// Split the UART in reader and writer parts.
     ///
     /// This allows reading and writing concurrently from independent tasks.
-    pub fn split(self) -> (BufferedUarteRx<'d, D, U, T>, BufferedUarteTx<'d, U>) {
+    pub fn split(self) -> (BufferedUarteRx<'d, U, T, D>, BufferedUarteTx<'d, U>) {
         (self.rx, self.tx)
     }
 
@@ -334,7 +334,7 @@ impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Dom
     ///
     /// The returned halves borrow from `self`, so you can drop them and go back to using
     /// the "un-split" `self`. This allows temporarily splitting the UART.
-    pub fn split_by_ref(&mut self) -> (&mut BufferedUarteRx<'d, D, U, T>, &mut BufferedUarteTx<'d, U>) {
+    pub fn split_by_ref(&mut self) -> (&mut BufferedUarteRx<'d, U, T, D>, &mut BufferedUarteTx<'d, U>) {
         (&mut self.rx, &mut self.tx)
     }
 
@@ -538,7 +538,7 @@ impl<'a, U: UarteInstance> Drop for BufferedUarteTx<'a, U> {
 }
 
 /// Reader part of the buffered UARTE driver.
-pub struct BufferedUarteRx<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> {
+pub struct BufferedUarteRx<'d, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>, D: Domain + 'static = MCUDomain> {
     _peri: Peri<'d, U>,
     timer: Timer<'d, T>,
     _ppi_ch1: Ppi<'d, AnyConfigurableChannel<D>, 1, 1>,
@@ -546,7 +546,7 @@ pub struct BufferedUarteRx<'d, D: Domain + 'static, U: UarteInstance<Domain = D>
     _ppi_group: PpiGroup<'d, AnyGroup<D>>,
 }
 
-impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> BufferedUarteRx<'d, D, U, T> {
+impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> BufferedUarteRx<'d, U, T, D> {
     /// Create a new BufferedUarte without hardware flow control.
     ///
     /// # Panics
@@ -785,7 +785,7 @@ impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Dom
     }
 }
 
-impl<'a, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> Drop for BufferedUarteRx<'a, D, U, T> {
+impl<'a, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> Drop for BufferedUarteRx<'a, U, T, D> {
     fn drop(&mut self) {
         self._ppi_group.disable_all();
 
@@ -819,11 +819,11 @@ mod _embedded_io {
         }
     }
 
-    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::ErrorType for BufferedUarte<'d, D, U, T> {
+    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::ErrorType for BufferedUarte<'d, U, T, D> {
         type Error = Error;
     }
 
-    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::ErrorType for BufferedUarteRx<'d, D, U, T> {
+    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::ErrorType for BufferedUarteRx<'d, U, T, D> {
         type Error = Error;
     }
 
@@ -831,31 +831,31 @@ mod _embedded_io {
         type Error = Error;
     }
 
-    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::Read for BufferedUarte<'d, D, U, T> {
+    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::Read for BufferedUarte<'d, U, T, D> {
         async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
             self.read(buf).await
         }
     }
 
-    impl<'d: 'd, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::Read for BufferedUarteRx<'d, D, U, T> {
+    impl<'d: 'd, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::Read for BufferedUarteRx<'d, U, T, D> {
         async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
             self.read(buf).await
         }
     }
 
-    impl<'d, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D> + 'd> embedded_io_async::ReadReady for BufferedUarte<'d, D, U, T> {
+    impl<'d, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D> + 'd> embedded_io_async::ReadReady for BufferedUarte<'d, U, T, D> {
         fn read_ready(&mut self) -> Result<bool, Self::Error> {
-            BufferedUarteRx::<'d, D, U, T>::read_ready()
+            BufferedUarteRx::<'d, U, T, D>::read_ready()
         }
     }
 
-    impl<'d, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D> + 'd> embedded_io_async::ReadReady for BufferedUarteRx<'d, D, U, T> {
+    impl<'d, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D> + 'd> embedded_io_async::ReadReady for BufferedUarteRx<'d, U, T, D> {
         fn read_ready(&mut self) -> Result<bool, Self::Error> {
             Self::read_ready()
         }
     }
 
-    impl<'d, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D> + 'd> embedded_io_async::BufRead for BufferedUarte<'d, D, U, T> {
+    impl<'d, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D> + 'd> embedded_io_async::BufRead for BufferedUarte<'d, U, T, D> {
         async fn fill_buf(&mut self) -> Result<&[u8], Self::Error> {
             self.fill_buf().await
         }
@@ -865,7 +865,7 @@ mod _embedded_io {
         }
     }
 
-    impl<'d: 'd, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::BufRead for BufferedUarteRx<'d, D, U, T> {
+    impl<'d: 'd, D:Domain, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::BufRead for BufferedUarteRx<'d, U, T, D> {
         async fn fill_buf(&mut self) -> Result<&[u8], Self::Error> {
             self.fill_buf().await
         }
@@ -875,7 +875,7 @@ mod _embedded_io {
         }
     }
 
-    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::Write for BufferedUarte<'d, D, U, T> {
+    impl<'d, D: Domain + 'static, U: UarteInstance<Domain = D>, T: TimerInstance<Domain = D>> embedded_io_async::Write for BufferedUarte<'d, U, T, D> {
         async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
             self.write(buf).await
         }

@@ -22,7 +22,7 @@ use embassy_hal_internal::{impl_peripheral, PeripheralType, Peri};
 
 use crate::pac::common::{Reg, RW, W};
 use crate::peripherals;
-use crate::domain::{Domain, DomainSpecific};
+use crate::domain::{Domain, DomainSpecific, MCUDomain};
 
 #[cfg_attr(feature = "_dppi", path = "dppi.rs")]
 #[cfg_attr(feature = "_ppi", path = "ppi.rs")]
@@ -232,7 +232,7 @@ pub trait Group: SealedGroup + PeripheralType + crate::domain::DomainSpecific + 
 
 /// The any channel can represent any static channel at runtime.
 /// This can be used to have fewer generic parameters in some places.
-pub struct AnyStaticChannel<D: Domain> {
+pub struct AnyStaticChannel<D: Domain = MCUDomain> {
     pub(crate) domain: PhantomData<D>,
     pub(crate) number: u8,
 }
@@ -312,7 +312,7 @@ macro_rules! impl_ppi_channel {
 //       groups
 
 /// A type erased PPI group.
-pub struct AnyGroup<D:Domain> {
+pub struct AnyGroup<D:Domain = MCUDomain> {
     pub(crate) domain: PhantomData<D>,
     pub(crate) number: u8,
 }
@@ -336,7 +336,7 @@ macro_rules! impl_group {
             }
         }
 
-        impl From<peripherals::$type> for crate::ppi::AnyGroup {
+        impl From<peripherals::$type> for crate::ppi::AnyGroup<<peripherals::$type as crate::domain::DomainSpecific>::Domain> {
             fn from(val: peripherals::$type) -> Self {
                 Self {
                     domain: Default::default(),
@@ -347,11 +347,11 @@ macro_rules! impl_group {
     };
 }
 
-// impl_group!(PPI_GROUP0, 0);
-// impl_group!(PPI_GROUP1, 1);
-// impl_group!(PPI_GROUP2, 2);
-// impl_group!(PPI_GROUP3, 3);
-// #[cfg(not(feature = "_nrf51"))]
-// impl_group!(PPI_GROUP4, 4);
-// #[cfg(not(feature = "_nrf51"))]
-// impl_group!(PPI_GROUP5, 5);
+impl_group!(PPI_GROUP0, 0);
+impl_group!(PPI_GROUP1, 1);
+impl_group!(PPI_GROUP2, 2);
+impl_group!(PPI_GROUP3, 3);
+#[cfg(not(feature = "_nrf51"))]
+impl_group!(PPI_GROUP4, 4);
+#[cfg(not(feature = "_nrf51"))]
+impl_group!(PPI_GROUP5, 5);

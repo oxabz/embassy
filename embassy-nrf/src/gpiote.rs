@@ -15,7 +15,7 @@ use crate::pac::gpio::vals::Sense;
 use crate::pac::gpiote::vals::{Mode, Outinit, Polarity};
 use crate::ppi::{Event, Task};
 use crate::{interrupt, pac, peripherals};
-use crate::domain::{Domain, DomainSpecific};
+use crate::domain::{Domain, DomainSpecific, MCUDomain};
 
 #[cfg(feature = "_nrf51")]
 /// Amount of GPIOTE channels in the chip.
@@ -189,7 +189,7 @@ impl Iterator for BitIter {
 }
 
 /// GPIOTE channel driver in input mode
-pub struct InputChannel<'d, D: Domain + 'static> {
+pub struct InputChannel<'d, D: Domain + 'static = MCUDomain> {
     ch: Peri<'d, AnyChannel<D>>,
     pin: Input<'d, D>,
 }

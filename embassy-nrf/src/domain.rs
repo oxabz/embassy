@@ -16,6 +16,8 @@ pub trait DomainSpecific {
     type Domain: Domain;
 }
 
+/* MCUDomain the central domain */
+
 #[cfg(not(feature = "_multi_domain"))]
 pub struct MCUDomain;
 
@@ -28,6 +30,9 @@ impl Domain for MCUDomain {
 impl Domain for MCUDomain {
     const PPI: crate::pac::ppi::Ppi = crate::pac::PPI;
 }
+
+#[cfg(feature = "_multi_domain")]
+pub use crate::chip::MCUDomain;
 
 #[macro_export]
 macro_rules! domain_definition {

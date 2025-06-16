@@ -108,6 +108,11 @@ impl_timer!(TIMER0, TIMER0, TIMER0);
 impl_timer!(TIMER1, TIMER1, TIMER1);
 impl_timer!(TIMER2, TIMER2, TIMER2);
 
+impl_group!(PPI_GROUP0, 0);
+impl_group!(PPI_GROUP1, 1);
+impl_group!(PPI_GROUP2, 2);
+impl_group!(PPI_GROUP3, 3);
+
 impl_rng!(RNG, RNG, RNG);
 
 impl_pin!(P0_00, 0, 0);

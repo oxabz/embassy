@@ -351,7 +351,5 @@ impl_group!(PPI_GROUP0, 0);
 impl_group!(PPI_GROUP1, 1);
 impl_group!(PPI_GROUP2, 2);
 impl_group!(PPI_GROUP3, 3);
-#[cfg(not(feature = "_nrf51"))]
 impl_group!(PPI_GROUP4, 4);
-#[cfg(not(feature = "_nrf51"))]
 impl_group!(PPI_GROUP5, 5);

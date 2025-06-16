@@ -213,6 +213,13 @@ impl_ppi_channel!(PPI_CH29, 29 => static);
 impl_ppi_channel!(PPI_CH30, 30 => static);
 impl_ppi_channel!(PPI_CH31, 31 => static);
 
+impl_group!(PPI_GROUP0, 0);
+impl_group!(PPI_GROUP1, 1);
+impl_group!(PPI_GROUP2, 2);
+impl_group!(PPI_GROUP3, 3);
+impl_group!(PPI_GROUP4, 4);
+impl_group!(PPI_GROUP5, 5);
+
 impl_saadc_input!(P0_04, ANALOG_INPUT2);
 impl_saadc_input!(P0_05, ANALOG_INPUT3);
 

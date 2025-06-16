@@ -326,6 +326,13 @@ impl_ppi_channel!(PPI_CH13, 13 => configurable);
 impl_ppi_channel!(PPI_CH14, 14 => configurable);
 impl_ppi_channel!(PPI_CH15, 15 => configurable);
 
+impl_group!(PPI_GROUP0, 0);
+impl_group!(PPI_GROUP1, 1);
+impl_group!(PPI_GROUP2, 2);
+impl_group!(PPI_GROUP3, 3);
+impl_group!(PPI_GROUP4, 4);
+impl_group!(PPI_GROUP5, 5);
+
 impl_saadc_input!(P0_13, ANALOG_INPUT0);
 impl_saadc_input!(P0_14, ANALOG_INPUT1);
 impl_saadc_input!(P0_15, ANALOG_INPUT2);

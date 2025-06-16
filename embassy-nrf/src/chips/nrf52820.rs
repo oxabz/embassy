@@ -235,6 +235,13 @@ impl_ppi_channel!(PPI_CH29, 29 => static);
 impl_ppi_channel!(PPI_CH30, 30 => static);
 impl_ppi_channel!(PPI_CH31, 31 => static);
 
+impl_group!(PPI_GROUP0, 0);
+impl_group!(PPI_GROUP1, 1);
+impl_group!(PPI_GROUP2, 2);
+impl_group!(PPI_GROUP3, 3);
+impl_group!(PPI_GROUP4, 4);
+impl_group!(PPI_GROUP5, 5);
+
 impl_radio!(RADIO, RADIO, RADIO);
 
 impl_egu!(EGU0, EGU0, EGU0_SWI0);

@@ -33,9 +33,9 @@ pub(crate) use _version::*;
 pub struct Ppi<'d, C: Channel, const EVENT_COUNT: usize, const TASK_COUNT: usize> {
     ch: Peri<'d, C>,
     #[cfg(feature = "_dppi")]
-    events: [Event<'d>; EVENT_COUNT],
+    events: [Event<'d, C::Domain>; EVENT_COUNT],
     #[cfg(feature = "_dppi")]
-    tasks: [Task<'d>; TASK_COUNT],
+    tasks: [Task<'d, C::Domain>; TASK_COUNT],
 }
 
 /// PPI channel group driver.
@@ -346,10 +346,3 @@ macro_rules! impl_group {
         }
     };
 }
-
-impl_group!(PPI_GROUP0, 0);
-impl_group!(PPI_GROUP1, 1);
-impl_group!(PPI_GROUP2, 2);
-impl_group!(PPI_GROUP3, 3);
-impl_group!(PPI_GROUP4, 4);
-impl_group!(PPI_GROUP5, 5);

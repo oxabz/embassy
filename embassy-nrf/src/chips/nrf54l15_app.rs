@@ -210,7 +210,7 @@ domain_definition!(RadioDomain, pac::DPPIC10);
 domain_definition!(PeriDomain, pac::DPPIC20);
 domain_definition!(LPDomain, pac::DPPIC30);
 
-crate::domain::peripherals! {
+crate::peripherals! {
     super::MCUDomain => {
         // GPIO port 2
         P2_00,

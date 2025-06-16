@@ -74,55 +74,20 @@ macro_rules! peripherals {
 /// Defining peripheral type.
 #[macro_export]
 macro_rules! peripherals {
-    ($($(#[$cfg:meta])? $name:ident),*$(,)?) => {
+    ($($domain:path => {$($(#[$cfg:meta])? $name:ident),*$(,)?})*) => {
         embassy_hal_internal::peripherals!(
             $(
                 $(#[$cfg])?
                 $name,
             )*
         );
-    };
-}
 
-
-
-/// Types for the peripheral singletons.
-#[macro_export]
-macro_rules! peripherals_definition {
-    ($($(#[$cfg:meta])? $name:ident),*$(,)?) => {
-        /// Types for the peripheral singletons.
-        pub mod peripherals {
-            $(
-                $(#[$cfg])?
-                #[allow(non_camel_case_types)]
-                #[doc = concat!(stringify!($name), " peripheral")]
-                #[derive(Debug)]
-                #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-                pub struct $name { _private: () }
-
-                $(#[$cfg])?
-                impl $name {
-                    /// Unsafely create an instance of this peripheral out of thin air.
-                    ///
-                    /// # Safety
-                    ///
-                    /// You must ensure that you're only using one instance of this type at a time.
-                    #[inline]
-                    pub unsafe fn steal() -> embassy_hal_internal::Peri<'static, Self> {
-                        embassy_hal_internal::Peri::new_unchecked(Self{ _private: ()})
-                    }
-                }
-
-                $(#[$cfg])?
-                embassy_hal_internal::impl_peripheral!($name);
-
-                #[cfg(feature = "_multi_domain")]
-                compile_error!("You need to specify the domain if the controller has several domains");
-
-
-            )*
+        $($(
+        $(#[$cfg])?
+        impl $crate::domain::DomainSpecific for $crate::peripherals::$name {
+            type Domain = $domain;
         }
+        )*)*
     };
 }
-
 

@@ -25,6 +25,9 @@ use crate::util::slice_in_ram;
 use crate::{gpio, interrupt, pac};
 use crate::domain::DomainSpecific;
 
+#[cfg(feature = "_nrf54l")]
+use crate::chip::shims::{TwimShim, TwimShortsShim};
+
 /// TWIM config.
 #[non_exhaustive]
 pub struct Config {
@@ -140,9 +143,9 @@ impl<'d, T: Instance> Twim<'d, T> {
         sda.conf().write(|w| {
             w.set_dir(gpiovals::Dir::OUTPUT);
             w.set_input(gpiovals::Input::CONNECT);
-            w.set_drive(match config.sda_high_drive {
-                true => gpiovals::Drive::H0D1,
-                false => gpiovals::Drive::S0D1,
+            gpio::convert_drive(w, match config.sda_high_drive {
+                true => gpio::OutputDrive::HighDrive0Disconnect1,
+                false => gpio::OutputDrive::Standard0Disconnect1,
             });
             if config.sda_pullup {
                 w.set_pull(gpiovals::Pull::PULLUP);
@@ -151,9 +154,9 @@ impl<'d, T: Instance> Twim<'d, T> {
         scl.conf().write(|w| {
             w.set_dir(gpiovals::Dir::OUTPUT);
             w.set_input(gpiovals::Input::CONNECT);
-            w.set_drive(match config.scl_high_drive {
-                true => gpiovals::Drive::H0D1,
-                false => gpiovals::Drive::S0D1,
+            gpio::convert_drive(w, match config.sda_high_drive {
+                true => gpio::OutputDrive::HighDrive0Disconnect1,
+                false => gpio::OutputDrive::Standard0Disconnect1,
             });
             if config.sda_pullup {
                 w.set_pull(gpiovals::Pull::PULLUP);

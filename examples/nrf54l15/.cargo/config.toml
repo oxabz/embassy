@@ -4,6 +4,7 @@ runner = "probe-rs run --chip nrf54l15"
 
 [build]
 target = "thumbv8m.main-none-eabihf"
+rustflags = []
 
 [env]
 DEFMT_LOG = "trace"

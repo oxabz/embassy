@@ -20,6 +20,9 @@ use crate::pac::spis::vals;
 use crate::util::slice_in_ram_or;
 use crate::{interrupt, pac};
 use crate::domain::DomainSpecific;
+#[cfg(feature = "_nrf54l")]
+use crate::chip::shims::SpisDmaShim;
+
 
 /// SPIS error
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

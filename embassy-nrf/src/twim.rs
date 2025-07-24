@@ -26,7 +26,7 @@ use crate::{gpio, interrupt, pac};
 use crate::domain::DomainSpecific;
 
 #[cfg(feature = "_nrf54l")]
-use crate::chip::shims::{TwimShim, TwimShortsShim};
+use crate::chip::shims::{TwimShim, TwimDmaShim, TwimShortsShim};
 
 /// TWIM config.
 #[non_exhaustive]
@@ -132,8 +132,8 @@ impl<'d, T: Instance> Twim<'d, T> {
     pub fn new(
         twim: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        sda: Peri<'d, impl GpioPin>,
-        scl: Peri<'d, impl GpioPin>,
+        sda: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        scl: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
         tx_ram_buffer: &'d mut [u8],
     ) -> Self {
@@ -154,11 +154,11 @@ impl<'d, T: Instance> Twim<'d, T> {
         scl.conf().write(|w| {
             w.set_dir(gpiovals::Dir::OUTPUT);
             w.set_input(gpiovals::Input::CONNECT);
-            gpio::convert_drive(w, match config.sda_high_drive {
+            gpio::convert_drive(w, match config.scl_high_drive {
                 true => gpio::OutputDrive::HighDrive0Disconnect1,
                 false => gpio::OutputDrive::Standard0Disconnect1,
             });
-            if config.sda_pullup {
+            if config.scl_pullup {
                 w.set_pull(gpiovals::Pull::PULLUP);
             }
         });

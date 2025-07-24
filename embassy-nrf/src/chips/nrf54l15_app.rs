@@ -1,4 +1,5 @@
 use crate::domain_definition;
+pub const FORCE_COPY_BUFFER_SIZE: usize = 512;
 
 /// Peripheral Access Crate
 #[allow(unused_imports)]
@@ -224,6 +225,8 @@ crate::peripherals! {
         P2_08,
         P2_09,
         P2_10,
+
+        SERIAL00
     }
 
     PeriDomain => {
@@ -246,9 +249,9 @@ crate::peripherals! {
         P1_15,
         P1_16,
 
-        TWIM20,
-        TWIM21,
-        TWIM22,
+        SERIAL20,
+        SERIAL21,
+        SERIAL22,
     }
 
     LPDomain => {
@@ -261,7 +264,7 @@ crate::peripherals! {
         P0_05,
         P0_06,
 
-        TWIM30
+        SERIAL30
     }
 }
 
@@ -303,11 +306,27 @@ impl_pin!(P2_08, 2, 8);
 impl_pin!(P2_09, 2, 9);
 impl_pin!(P2_10, 2, 10);
 
-impl_twim!(TWIM20, TWIM20, SERIAL20);
-impl_twim!(TWIM21, TWIM21, SERIAL21);
-impl_twim!(TWIM22, TWIM22, SERIAL22);
+impl_twim!(SERIAL20, TWIM20, SERIAL20);
+impl_twim!(SERIAL21, TWIM21, SERIAL21);
+impl_twim!(SERIAL22, TWIM22, SERIAL22);
+impl_twim!(SERIAL30, TWIM30, SERIAL30);
 
-impl_twim!(TWIM30, TWIM30, SERIAL30);
+impl_twis!(SERIAL20, TWIS20, SERIAL20);
+impl_twis!(SERIAL21, TWIS21, SERIAL21);
+impl_twis!(SERIAL22, TWIS22, SERIAL22);
+impl_twis!(SERIAL30, TWIS30, SERIAL30);
+
+impl_spim!(SERIAL00, SPIM00, SERIAL00, 128_000, 4..126);
+impl_spim!(SERIAL20, SPIM20, SERIAL20, 16_000, 2..126);
+impl_spim!(SERIAL21, SPIM21, SERIAL21, 16_000, 2..126);
+impl_spim!(SERIAL22, SPIM22, SERIAL22, 16_000, 2..126);
+impl_spim!(SERIAL30, SPIM30, SERIAL30, 16_000, 2..126);
+
+impl_spis!(SERIAL00, SPIS00, SERIAL00);
+impl_spis!(SERIAL20, SPIS20, SERIAL20);
+impl_spis!(SERIAL21, SPIS21, SERIAL21);
+impl_spis!(SERIAL22, SPIS22, SERIAL22);
+impl_spis!(SERIAL30, SPIS30, SERIAL30);
 
 embassy_hal_internal::interrupt_mod!(
     SWI00,
@@ -373,30 +392,40 @@ embassy_hal_internal::interrupt_mod!(
 pub(crate) mod shims {
     use nrf_pac::twim;
 
+    macro_rules! dma_shim {
+        ($id:ident, $peri_mod:path, $peri_id:ident) => {
+            pub(crate) trait $id {
+                #[doc = "RXD EasyDMA channel"]
+                fn rxd(self) -> $peri_mod::DmaRx;
+                #[doc = "TXD EasyDMA channel"]
+                fn txd(self) -> $peri_mod::DmaTx;
+            }
+
+            impl $id for $peri_mod::$peri_id {
+
+                #[inline(always)]
+                fn rxd(self) -> $peri_mod::DmaRx {
+                    self.dma().rx()
+                }
+
+                #[inline(always)]
+                fn txd(self) -> $peri_mod::DmaTx {
+                    self.dma().tx()
+                }
+            }
+        };
+    }
+
+    dma_shim!(TwimDmaShim, twim, Twim);
+
     /// Simple trait that makes the nrf54l twim PAC compatible with the Twim driver
     pub(crate) trait TwimShim{
-        #[doc = "RXD EasyDMA channel"]
-        fn rxd(self) -> twim::DmaRx;
-        #[doc = "TXD EasyDMA channel"]
-        fn txd(self) -> twim::DmaTx;
-
         fn tasks_startrx(self) -> nrf_pac::common::Reg<u32, nrf_pac::common::W>;
 
         fn tasks_starttx(self) -> nrf_pac::common::Reg<u32, nrf_pac::common::W>;
     }
 
     impl TwimShim for twim::Twim{
-        #[inline(always)]
-        fn rxd(self) -> twim::DmaRx {
-            self.dma().rx()
-        }
-
-        #[inline(always)]
-        fn txd(self) -> twim::DmaTx {
-            self.dma().tx()
-        }
-
-
         #[inline(always)]
         fn tasks_startrx(self) -> nrf_pac::common::Reg<u32, nrf_pac::common::W> {
             unsafe { self.tasks_dma().rx().start() }
@@ -423,4 +452,9 @@ pub(crate) mod shims {
             self.set_lastrx_dma_tx_start(val)
         }
     }
+
+    dma_shim!(TwisDmaShim, nrf_pac::twis, Twis);
+    dma_shim!(SpimDmaShim, nrf_pac::spim, Spim);
+    dma_shim!(SpisDmaShim, nrf_pac::spis, Spis);
+
 }

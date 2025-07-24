@@ -20,6 +20,8 @@ use crate::pac::gpio::vals as gpiovals;
 use crate::pac::twis::vals;
 use crate::util::slice_in_ram_or;
 use crate::{gpio, interrupt, pac};
+#[cfg(feature = "_nrf54l")]
+use crate::chip::shims::TwisDmaShim;
 use crate::domain::DomainSpecific;
 
 /// TWIS config.
@@ -150,32 +152,32 @@ impl<'d, T: Instance> Twis<'d, T> {
     pub fn new(
         twis: Peri<'d, T>,
         _irq: impl interrupt::typelevel::Binding<T::Interrupt, InterruptHandler<T>> + 'd,
-        sda: Peri<'d, impl GpioPin>,
-        scl: Peri<'d, impl GpioPin>,
+        sda: Peri<'d, impl GpioPin<Domain = T::Domain>>,
+        scl: Peri<'d, impl GpioPin<Domain = T::Domain>>,
         config: Config,
     ) -> Self {
         let r = T::regs();
 
         // Configure pins
         sda.conf().write(|w| {
-            w.set_dir(gpiovals::Dir::INPUT);
+            w.set_dir(gpiovals::Dir::OUTPUT);
             w.set_input(gpiovals::Input::CONNECT);
-            w.set_drive(match config.sda_high_drive {
-                true => gpiovals::Drive::H0D1,
-                false => gpiovals::Drive::S0D1,
+            gpio::convert_drive(w, match config.sda_high_drive {
+                true => gpio::OutputDrive::HighDrive0Disconnect1,
+                false => gpio::OutputDrive::Standard0Disconnect1,
             });
             if config.sda_pullup {
                 w.set_pull(gpiovals::Pull::PULLUP);
             }
         });
         scl.conf().write(|w| {
-            w.set_dir(gpiovals::Dir::INPUT);
+            w.set_dir(gpiovals::Dir::OUTPUT);
             w.set_input(gpiovals::Input::CONNECT);
-            w.set_drive(match config.scl_high_drive {
-                true => gpiovals::Drive::H0D1,
-                false => gpiovals::Drive::S0D1,
+            gpio::convert_drive(w, match config.scl_high_drive {
+                true => gpio::OutputDrive::HighDrive0Disconnect1,
+                false => gpio::OutputDrive::Standard0Disconnect1,
             });
-            if config.sda_pullup {
+            if config.scl_pullup {
                 w.set_pull(gpiovals::Pull::PULLUP);
             }
         });

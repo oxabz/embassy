@@ -4,6 +4,7 @@
 
 use core::future::poll_fn;
 use core::marker::PhantomData;
+use core::ops::Range;
 #[cfg(feature = "_nrf52832_anomaly_109")]
 use core::sync::atomic::AtomicU8;
 use core::sync::atomic::{compiler_fence, Ordering};
@@ -13,9 +14,13 @@ use embassy_embedded_hal::SetConfig;
 use embassy_hal_internal::{Peri, PeripheralType};
 use embassy_sync::waitqueue::AtomicWaker;
 pub use embedded_hal_02::spi::{Mode, Phase, Polarity, MODE_0, MODE_1, MODE_2, MODE_3};
-pub use pac::spim::vals::{Frequency, Order as BitOrder};
+#[cfg(not(feature = "_nrf54l"))]
+pub use pac::spim::vals::Frequency;
+pub use pac::spim::vals::{Order as BitOrder};
 
 use crate::chip::{EASY_DMA_SIZE, FORCE_COPY_BUFFER_SIZE};
+#[cfg(feature = "_nrf54l")]
+use crate::chip::shims::SpimDmaShim;
 use crate::gpio::{self, convert_drive, AnyPin, OutputDrive, Pin as GpioPin, PselBits, SealedPin as _};
 use crate::interrupt::typelevel::Interrupt;
 use crate::pac::gpio::vals as gpiovals;
@@ -37,8 +42,13 @@ pub enum Error {
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct Config {
+    #[cfg(not(feature = "_nrf54l"))]
     /// Frequency
     pub frequency: Frequency,
+
+    #[cfg(feature = "_nrf54l")]
+    /// Clock divider
+    pub divisor: Divisor,
 
     /// SPI mode
     pub mode: Mode,
@@ -59,10 +69,54 @@ pub struct Config {
     pub mosi_drive: OutputDrive,
 }
 
+#[cfg(feature = "_nrf54l")]
+#[derive(Clone, Copy)]
+/// Frequency divider configuration for the SPIM device
+pub struct Divisor(u8);
+
+#[cfg(feature = "_nrf54l")]
+impl Divisor {
+
+    /// Create an instance of Divider
+    pub fn new(div: u8) -> Self {
+        Divisor(div)
+    }
+
+    /// Create an instance of Divider based on the given frequency and the given SPIM instance
+    /// It will pick the divider value the closest to frequency
+    pub fn from_kilohertz<T:Instance>(frequency: u32) -> Self {
+        let div = T::CORE_FREQUENCY / frequency;
+        let div = div.clamp(T::PRESCALER_RANGE.start, T::PRESCALER_RANGE.end) as u8;
+
+        Self(div)
+    }
+
+    /// Create an instance of Divider based on the given frequency and the given SPIM instance
+    pub fn from_kilohertz_exact<T:Instance>(frequency: u32) -> Option<Self> {
+        let div = T::CORE_FREQUENCY / frequency;
+        if div * T::CORE_FREQUENCY != frequency || !T::PRESCALER_RANGE.contains(&div){
+            return None;
+        }
+
+        Some(Self(div as u8))
+    }
+}
+
+#[cfg(feature = "_nrf54l")]
+impl Default for Divisor {
+    fn default() -> Self {
+        // We used the reset value for the prescaler value
+        Self::new(0x40)
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
+            #[cfg(not(feature = "_nrf54l"))]
             frequency: Frequency::M1,
+            #[cfg(feature = "_nrf54l")]
+            divisor: Divisor::default(),
             mode: MODE_0,
             bit_order: BitOrder::MSB_FIRST,
             orc: 0x00,
@@ -501,10 +555,19 @@ pub(crate) trait SealedInstance {
 /// SPIM peripheral instance
 #[allow(private_bounds)]
 pub trait Instance: SealedInstance + PeripheralType + DomainSpecific + 'static {
+    #[cfg(feature = "_nrf54l")]
+    /// The core frequency for the given spi instance in kilohertz
+    const CORE_FREQUENCY: u32;
+
+    #[cfg(feature = "_nrf54l")]
+    /// What divider can be achieved by a spim device
+    const PRESCALER_RANGE: core::ops::Range<u32>;
+
     /// Interrupt for this peripheral.
     type Interrupt: interrupt::typelevel::Interrupt;
 }
 
+#[cfg(not(feature = "_nrf54l"))]
 macro_rules! impl_spim {
     ($type:ident, $pac_type:ident, $irq:ident) => {
         impl crate::spim::SealedInstance for peripherals::$type {
@@ -518,6 +581,28 @@ macro_rules! impl_spim {
         }
         impl crate::spim::Instance for peripherals::$type {
             type Interrupt = crate::interrupt::typelevel::$irq;
+        }
+    };
+}
+
+#[cfg(feature = "_nrf54l")]
+macro_rules! impl_spim {
+    ($type:ident, $pac_type:ident, $irq:ident, $core_freq:literal, $prescaler_start:literal..$prescaler_stop:literal) => {
+        impl crate::spim::SealedInstance for peripherals::$type {
+            fn regs() -> pac::spim::Spim {
+                pac::$pac_type
+            }
+            fn state() -> &'static crate::spim::State {
+                static STATE: crate::spim::State = crate::spim::State::new();
+                &STATE
+            }
+        }
+        impl crate::spim::Instance for peripherals::$type {
+            type Interrupt = crate::interrupt::typelevel::$irq;
+
+            const CORE_FREQUENCY: u32 = $core_freq;
+
+            const PRESCALER_RANGE: Range<u32> = $prescaler_start..$prescaler_stop;
         }
     };
 }
@@ -629,9 +714,18 @@ impl<'d, T: Instance> SetConfig for Spim<'d, T> {
             }
         });
 
+        #[cfg(not(feature = "_nrf54l"))]
         // Configure frequency.
-        let frequency = config.frequency;
-        r.frequency().write(|w| w.set_frequency(frequency));
+        {
+            let frequency = config.frequency;
+            r.frequency().write(|w| w.set_frequency(frequency));
+        }
+        #[cfg((feature = "_nrf54l"))]
+        // Configure the prescaler
+        {
+            let divisor = config.divisor;
+            r.prescaler().write(|w| {w.set_divisor(divisor.0)})
+        }
 
         // Set over-read character
         let orc = config.orc;

@@ -200,6 +200,9 @@ pub mod pac {
     };
 }
 
+#[path = "shims/nrf54l.rs"]
+pub mod shims;
+
 /// The maximum buffer size that the EasyDMA can send/recv in one operation.
 pub const EASY_DMA_SIZE: usize = (1 << 16) - 1;
 //pub const FORCE_COPY_BUFFER_SIZE: usize = 1024;
@@ -387,74 +390,3 @@ embassy_hal_internal::interrupt_mod!(
     GPIOTE30_1,
     CLOCK_POWER,
 );
-
-//TODO : Move that to a better module
-pub(crate) mod shims {
-    use nrf_pac::twim;
-
-    macro_rules! dma_shim {
-        ($id:ident, $peri_mod:path, $peri_id:ident) => {
-            pub(crate) trait $id {
-                #[doc = "RXD EasyDMA channel"]
-                fn rxd(self) -> $peri_mod::DmaRx;
-                #[doc = "TXD EasyDMA channel"]
-                fn txd(self) -> $peri_mod::DmaTx;
-            }
-
-            impl $id for $peri_mod::$peri_id {
-
-                #[inline(always)]
-                fn rxd(self) -> $peri_mod::DmaRx {
-                    self.dma().rx()
-                }
-
-                #[inline(always)]
-                fn txd(self) -> $peri_mod::DmaTx {
-                    self.dma().tx()
-                }
-            }
-        };
-    }
-
-    dma_shim!(TwimDmaShim, twim, Twim);
-
-    /// Simple trait that makes the nrf54l twim PAC compatible with the Twim driver
-    pub(crate) trait TwimShim{
-        fn tasks_startrx(self) -> nrf_pac::common::Reg<u32, nrf_pac::common::W>;
-
-        fn tasks_starttx(self) -> nrf_pac::common::Reg<u32, nrf_pac::common::W>;
-    }
-
-    impl TwimShim for twim::Twim{
-        #[inline(always)]
-        fn tasks_startrx(self) -> nrf_pac::common::Reg<u32, nrf_pac::common::W> {
-            unsafe { self.tasks_dma().rx().start() }
-        }
-        #[inline(always)]
-        fn tasks_starttx(self) -> nrf_pac::common::Reg<u32, nrf_pac::common::W> {
-            unsafe { self.tasks_dma().tx().start() }
-        }
-    }
-
-    pub(crate) trait TwimShortsShim {
-        #[doc = "Shortcut between event LASTTX and task STARTRX"]
-        fn set_lasttx_startrx(&mut self, val: bool);
-
-        fn set_lastrx_starttx(&mut self, val: bool);
-    }
-
-    impl TwimShortsShim for twim::regs::Shorts{
-        fn set_lasttx_startrx(&mut self, val: bool) {
-            self.set_lasttx_dma_rx_start(val)
-        }
-
-        fn set_lastrx_starttx(&mut self, val: bool) {
-            self.set_lastrx_dma_tx_start(val)
-        }
-    }
-
-    dma_shim!(TwisDmaShim, nrf_pac::twis, Twis);
-    dma_shim!(SpimDmaShim, nrf_pac::spim, Spim);
-    dma_shim!(SpisDmaShim, nrf_pac::spis, Spis);
-
-}
